@@ -13,17 +13,17 @@
  */
 import { setupWalletSelector, type WalletSelector } from "@near-wallet-selector/core";
 import { setupMeteorWallet } from "@near-wallet-selector/meteor-wallet";
-import { setupMyNearWallet } from "@near-wallet-selector/my-near-wallet";
+import { setupNearMobileWallet } from "@near-wallet-selector/near-mobile-wallet";
 import { setupModal, type WalletSelectorModal } from "@near-wallet-selector/modal-ui";
 import "@near-wallet-selector/modal-ui/styles.css";
 import { Buffer } from "buffer";
-import type { Nep413Signature } from "./nep413";
+import { signatureToBase64, type Nep413Signature } from "./nep413";
 export { verifyNep413, type Nep413Signature } from "./nep413";
 
 export const NETWORK: "mainnet" | "testnet" = import.meta.env.VITE_NEAR_NETWORK === "testnet" ? "testnet" : "mainnet";
 export const RECIPIENT = "need-to-know"; // NEP-413 recipient: binds signatures to this app
 const RPC = NETWORK === "mainnet" ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com";
-
+const PUBLIC_ORIGIN = /^https:\/\/[^/:]+\.[a-z]{2,}$/i.test(window.location.origin) ? window.location.origin : null;
 
 let selector: WalletSelector | null = null;
 let modal: WalletSelectorModal | null = null;
@@ -32,8 +32,18 @@ let init: Promise<WalletSelector> | null = null;
 export function setupWallet(): Promise<WalletSelector> {
   if (selector) return Promise.resolve(selector);
   init ??= (async () => {
-    selector = await setupWalletSelector({ network: NETWORK, modules: [setupMeteorWallet(), setupMyNearWallet()] });
-    modal = setupModal(selector, { theme: "light", description: "Need-to-Know uses your wallet to prove who you are and to encrypt your private document vault. No transactions, no funds." });
+    selector = await setupWalletSelector({
+      network: NETWORK,
+      modules: [
+        // NEAR Mobile (iOS/Android app): scan a QR code, approve on the phone.
+        // Its backend rejects non-public URLs (e.g. localhost), so metadata is only sent from a real domain.
+        setupNearMobileWallet(PUBLIC_ORIGIN ? { dAppMetadata: { name: "Need-to-Know", logoUrl: `${PUBLIC_ORIGIN}/favicon.svg`, url: PUBLIC_ORIGIN } } : {}),
+        // Meteor: browser extension or web wallet (import an existing account by seed phrase).
+        // MyNearWallet is not offered: it is retired and refuses new app connections.
+        setupMeteorWallet(),
+      ],
+    });
+    modal = setupModal(selector, { theme: "light", description: "Need-to-Know uses your wallet to prove who you are and to encrypt your private document vault. It never moves funds." });
     return selector;
   })();
   return init;
@@ -70,7 +80,7 @@ export async function signNep413(message: string, nonce: Uint8Array): Promise<Ne
   return {
     accountId: res.accountId,
     publicKey: res.publicKey,
-    signature: res.signature,
+    signature: signatureToBase64(res.signature), // wallets differ: base64 or "ed25519:<base58>"
     message,
     nonce: Buffer.from(nonce).toString("base64"),
     recipient: RECIPIENT,

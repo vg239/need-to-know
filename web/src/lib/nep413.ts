@@ -37,6 +37,14 @@ export function base58Decode(s: string): Uint8Array {
   return new Uint8Array(bytes);
 }
 
+/** Wallets return the 64-byte signature as base64 (spec) or "ed25519:<base58>" (some mobile wallets). */
+export function signatureBytes(s: string): Uint8Array {
+  if (s.startsWith("ed25519:")) return base58Decode(s.slice(8));
+  const b = Uint8Array.from(Buffer.from(s, "base64"));
+  return b.length === 64 ? b : base58Decode(s);
+}
+export const signatureToBase64 = (s: string) => Buffer.from(signatureBytes(s)).toString("base64");
+
 const u32 = (n: number) => {
   const b = new Uint8Array(4);
   new DataView(b.buffer).setUint32(0, n, true);
@@ -62,7 +70,7 @@ export function nep413Hash(message: string, nonce: Uint8Array, recipient: string
 export function verifyNep413(sig: Nep413Signature): boolean {
   if (!sig.publicKey.startsWith("ed25519:")) return false;
   const pub = base58Decode(sig.publicKey.slice(8));
-  const signature = Uint8Array.from(Buffer.from(sig.signature, "base64"));
+  const signature = signatureBytes(sig.signature);
   const nonce = Uint8Array.from(Buffer.from(sig.nonce, "base64"));
   const variants = sig.callbackUrl ? [undefined, sig.callbackUrl] : [undefined];
   return variants.some((cb) => {

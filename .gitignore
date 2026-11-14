@@ -17,3 +17,7 @@ venv/
 out/
 *.log
 .DS_Store
+
+# editor swap files (can contain .env contents)
+*.swp
+*.swo

@@ -5,7 +5,9 @@
 ║  • No database, no files written, no caches of user data.                ║
 ║  • Request/response bodies are never logged (uvicorn access log is off,  ║
 ║    see main.py) and are dropped when the response returns.               ║
-║  • The only secret is the NEAR AI API key, read from .env into memory.   ║
+║  • NEAR AI key: from .env (in memory), OR the user's own key sent per    ║
+║    request in the X-NearAI-Key header. A user key is used for that one   ║
+║    upstream call and then dropped: never stored, logged, or cached.      ║
 ║  • The pseudonym → real-identity map NEVER reaches this server: it is    ║
 ║    created and kept in the user's browser.                               ║
 ║                                                                          ║
@@ -25,7 +27,7 @@ import time
 from pathlib import Path
 
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -38,25 +40,38 @@ MAX_TOKENS_CAP = 1500
 
 
 def _load_api_key() -> str:
-    """Read API_KEY from the repo-root .env. Held in memory only; never logged or returned."""
+    """Read API_KEY from the repo-root .env. Held in memory only; never logged or returned.
+    Optional: without it, every user must bring their own key from the browser."""
     env = ROOT / ".env"
     if env.exists():
         for line in env.read_text().splitlines():
             if line.strip().startswith("API_KEY="):
                 return line.split("=", 1)[1].strip().strip("'\"")
-    raise RuntimeError("API_KEY missing — copy .env.example to .env and add your NEAR AI Cloud key")
+    return ""
 
 
 API_KEY = _load_api_key()
+
+
+def key_for(user_key: str | None) -> str:
+    """The user's own key wins (bring-your-own-key); else the server's .env key."""
+    k = (user_key or "").strip()
+    if k:
+        if len(k) > 256 or any(c.isspace() for c in k):
+            raise HTTPException(400, "malformed NEAR AI key")
+        return k
+    if API_KEY:
+        return API_KEY
+    raise HTTPException(401, "No NEAR AI key: add your own in the app (stored only in your browser) or set API_KEY in .env")
 app = FastAPI(title="Need-to-Know proxy", docs_url=None, redoc_url=None)
 
 
 # ───────────────────────────── /api/models ─────────────────────────────
 
 @app.get("/api/models")
-def models():
+def models(x_nearai_key: str | None = Header(default=None)):
     """TEE-hosted chat models only (owned_by == 'nearai'), so the UI can't pick a proxied 3rd-party API."""
-    ms = list_tee_models(API_KEY)
+    ms = list_tee_models((x_nearai_key or "").strip() or API_KEY)
     return {
         "default": DEFAULT_MODEL if any(m["id"] == DEFAULT_MODEL for m in ms) else (ms[0]["id"] if ms else None),
         "models": [{"id": m["id"], "name": m.get("name"), "context_length": m.get("context_length"),
@@ -101,8 +116,9 @@ class ChatIn(BaseModel):
 
 
 @app.post("/api/chat")
-async def chat(body: ChatIn):
+async def chat(body: ChatIn, x_nearai_key: str | None = Header(default=None)):
     """Forward EXACT bytes to the TEE model, then verify the response signature against the preflight."""
+    key = key_for(x_nearai_key)  # local variable only: gone when this request returns
     if not body.verified_signers:
         raise HTTPException(400, "run /api/attest first — no verified enclave to bind the response to")
 
@@ -122,15 +138,17 @@ async def chat(body: ChatIn):
     t0 = time.time()
     r = await asyncio.to_thread(
         requests.post, f"{BASE}/chat/completions", data=req_bytes, timeout=180,
-        headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                  "Accept-Encoding": "identity", "x-no-aliasing": "true"},
     )
     resp_bytes = r.content
+    if r.status_code == 401:
+        raise HTTPException(401, "NEAR AI rejected the key (invalid or expired). Check the key in the app or .env.")
     if r.status_code != 200:
         raise HTTPException(502, f"NEAR AI completion failed: HTTP {r.status_code} {r.text[:200]}")
     data = r.json()
 
-    sig = await asyncio.to_thread(fetch_signature, API_KEY, data["id"], body.model)
+    sig = await asyncio.to_thread(fetch_signature, key, data["id"], body.model)
     checks = verify_signature(sig, req_bytes, resp_bytes, body.model,
                               {s.lower() for s in body.verified_signers}, body.gateway_signer)
 
@@ -151,7 +169,8 @@ async def chat(body: ChatIn):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "stateless": True}
+    # server_key tells the UI whether a visitor MUST bring their own key.
+    return {"ok": True, "stateless": True, "server_key": bool(API_KEY)}
 
 
 # ───────────────────────── static frontend (prod) ─────────────────────────

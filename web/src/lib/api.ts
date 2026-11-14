@@ -34,9 +34,56 @@ export interface ChatReceipt {
 
 export type Msg = { role: "system" | "user" | "assistant"; content: string };
 
+// ─────────────── bring-your-own NEAR AI key ───────────────
+// Stored ONLY in this browser's localStorage. Sent to the stateless proxy in a
+// header on each request, used for that single upstream call, never stored there.
+const KEY_STORAGE = "ntk.nearaiKey";
+
+export function getUserKey(): string {
+  try {
+    return localStorage.getItem(KEY_STORAGE) ?? "";
+  } catch {
+    return ""; // private mode / blocked storage: just fall back to the server key
+  }
+}
+
+export function saveUserKey(k: string): void {
+  try {
+    if (k) localStorage.setItem(KEY_STORAGE, k);
+    else localStorage.removeItem(KEY_STORAGE);
+  } catch {
+    /* storage unavailable: the key simply won't persist */
+  }
+}
+
+export async function health(): Promise<{ ok: boolean; stateless: boolean; server_key: boolean }> {
+  const r = await fetch("/api/health");
+  return r.json();
+}
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const k = getUserKey();
+  if (k) headers["X-NearAI-Key"] = k;
+  const r = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+  if (!r.ok) {
+    const text = await r.text();
+    let detail = text.slice(0, 200);
+    try {
+      detail = JSON.parse(text).detail ?? detail;
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(`${detail} (HTTP ${r.status})`, r.status);
+  }
   return r.json();
 }
 

@@ -32,10 +32,14 @@ export function Drafting() {
   );
 }
 
-export function Nav() {
+export function Nav({ hasUserKey, onKey }: { hasUserKey: boolean; onKey: () => void }) {
   return (
     <nav className="nav" aria-label="Main">
       <a className="brand" href="#top">need-to-know</a>
+      <button className="link keychip" onClick={onKey} title="Use your own NEAR AI key (stored only in this browser)">
+        <span className={`k-dot ${hasUserKey ? "on" : ""}`} aria-hidden="true" />
+        {hasUserKey ? "Your key" : "API key"}
+      </button>
       <a className="link" href="#demo">Demo</a>
       <a className="link" href="#replay">Breach replay</a>
       <a className="link" href="#how">How it works</a>

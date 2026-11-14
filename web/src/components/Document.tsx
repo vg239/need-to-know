@@ -130,8 +130,8 @@ export function DocumentPaper(props: {
           </span>
         ) : (
           <>
-            <span><i style={{ background: "var(--green)" }} />never sent</span>
-            {skeletonUsed && <span><i style={{ background: "var(--green-06)", border: "1.5px solid var(--green)" }} />heading only</span>}
+            <span><i style={{ background: "var(--ink)" }} />never sent</span>
+            {skeletonUsed && <span><i style={{ background: "var(--ink-06)", border: "1.5px solid var(--ink)" }} />heading only</span>}
             <span><span className="code">PERSON_1</span> placeholder</span>
             <span>dates shifted by a secret offset</span>
           </>

@@ -9,8 +9,10 @@ import { KeyDialog } from "./components/KeyDialog";
 import { WalletButton } from "./components/Wallet";
 import { accessKeyPermission, activeAccount, disconnect, onAccountChange, openConnect, setupWallet, signNep413, verifyNep413 } from "./lib/near";
 import { receiptFile, receiptMessage, type CoSigned } from "./lib/receipt";
+import { HistoryList, VaultPanel, type VaultItem } from "./components/Vault";
+import { deleteRecord, deriveVaultKey, docSha256, listRecords, openDoc, putRecord, sealDoc, vaultKeyMessage, vaultNonce, type VaultDoc } from "./lib/vault";
 import { computeExposure, type ModeExposure } from "./lib/exposure";
-import { buildPiiMap, pseudonymise } from "./lib/pii";
+import { buildPiiMap, pseudonymise, restoreSegments } from "./lib/pii";
 import { applyBudget, answerMessages } from "./lib/plan";
 import { parseSkeletonReply, rankSections, skeletonLines, skeletonMessages } from "./lib/retrieval";
 import { leaves, sectionize } from "./lib/sectionize";
@@ -51,6 +53,7 @@ export default function App() {
   const [pdf, setPdf] = useState<Omit<PdfResult, "text"> | null>(null); // set when the document came from a PDF
   const [loadingDoc, setLoadingDoc] = useState("");
   const [doc, setDoc] = useState("");
+  const [shiftOverride, setShiftOverride] = useState<number | undefined>(undefined); // vault docs keep their date shift
   const [question, setQuestion] = useState("");
   const [budget, setBudget] = useState(10);
   const [routing, setRouting] = useState<Routing>("bm25");
@@ -133,6 +136,8 @@ export default function App() {
       .then((r) => r.text())
       .then((t) => {
         setPdf(null);
+        setShiftOverride(undefined);
+        setActiveVaultId(null);
         setDoc(t);
         setDocTitle(s.title);
       });
@@ -143,9 +148,9 @@ export default function App() {
   const { secs, map, indexMs } = useMemo(() => {
     const t0 = performance.now();
     const secs = sectionize(doc, { markdownOnly: !!pdf });
-    const map = buildPiiMap(doc);
+    const map = buildPiiMap(doc, shiftOverride);
     return { secs, map, indexMs: performance.now() - t0 };
-  }, [doc, pdf]);
+  }, [doc, pdf, shiftOverride]);
   const pageOf = (headLine: number) => (pdf ? pdf.lineToPage[headLine] : undefined);
   const indexInfo = {
     sections: secs.filter((x) => x.level > 1).length,
@@ -230,6 +235,7 @@ export default function App() {
       });
       setRun({ ...r });
       setPhase("done");
+      if (activeVaultId) await appendHistory(activeVaultId, q, r);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPhase("error");
@@ -237,10 +243,131 @@ export default function App() {
     }
   }
 
+  // ─────────── private RAG vault (wallet-encrypted, this browser only) ───────────
+  const [vaultKey, setVaultKey] = useState<CryptoKey | null>(null); // memory only, never persisted
+  const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
+  const [activeVaultId, setActiveVaultId] = useState<string | null>(null);
+  const [vaultBusy, setVaultBusy] = useState("");
+  const [vaultError, setVaultError] = useState("");
+  const [docSha, setDocSha] = useState("");
+  useEffect(() => {
+    docSha256(doc).then(setDocSha);
+  }, [doc]);
+  useEffect(() => {
+    // Switching or disconnecting the wallet locks the vault.
+    setVaultKey(null);
+    setVaultItems([]);
+    setActiveVaultId(null);
+  }, [account]);
+
+  async function refreshVault(key: CryptoKey, acct: string) {
+    const recs = await listRecords(acct);
+    const items: VaultItem[] = [];
+    let unreadable = 0;
+    for (const rec of recs) {
+      try {
+        items.push({ rec, doc: await openDoc(key, rec) });
+      } catch {
+        unreadable++;
+      }
+    }
+    items.sort((x, y) => y.doc.savedAt.localeCompare(x.doc.savedAt));
+    setVaultItems(items);
+    if (unreadable) setVaultError(`${unreadable} record(s) could not be decrypted with this wallet key`);
+  }
+
+  async function unlockVault() {
+    if (!account) return;
+    setVaultError("");
+    setVaultBusy("waiting for wallet signature…");
+    try {
+      const sig = await signNep413(vaultKeyMessage(account), await vaultNonce(account));
+      const key = await deriveVaultKey(sig, account);
+      setVaultKey(key);
+      await refreshVault(key, account);
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVaultBusy("");
+    }
+  }
+
+  async function saveToVault() {
+    if (!vaultKey || !account || !doc) return;
+    setVaultBusy("encrypting…");
+    try {
+      const existing = vaultItems.find((x) => x.rec.docSha256 === docSha);
+      const vdoc: VaultDoc = {
+        title: docTitle,
+        text: doc,
+        pdf: pdf ?? undefined,
+        shiftMonths: map.shiftMonths,
+        history: existing?.doc.history ?? [],
+        savedAt: new Date().toISOString(),
+      };
+      const rec = await sealDoc(vaultKey, account, vdoc);
+      await putRecord(rec);
+      setShiftOverride(map.shiftMonths);
+      setActiveVaultId(rec.id);
+      await refreshVault(vaultKey, account);
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVaultBusy("");
+    }
+  }
+
+  function openFromVault(id: string) {
+    const item = vaultItems.find((x) => x.rec.id === id);
+    if (!item) return;
+    setDocKey("vault");
+    setPdf(item.doc.pdf ? { ...item.doc.pdf, tocSource: item.doc.pdf.tocSource as PdfResult["tocSource"] } : null);
+    setShiftOverride(item.doc.shiftMonths);
+    setDocTitle(item.doc.title);
+    setDoc(item.doc.text);
+    setActiveVaultId(id);
+  }
+
+  async function removeFromVault(id: string) {
+    if (!vaultKey || !account) return;
+    await deleteRecord(id);
+    if (activeVaultId === id) setActiveVaultId(null);
+    await refreshVault(vaultKey, account);
+  }
+
+  async function appendHistory(id: string, q: string, r: Run) {
+    const item = vaultItems.find((x) => x.rec.id === id);
+    if (!item || !vaultKey || !account || !r.answer || !r.exposure) return;
+    const vdoc: VaultDoc = {
+      ...item.doc,
+      history: [
+        ...item.doc.history,
+        {
+          at: new Date().toISOString(),
+          question: q,
+          answer: r.answer.answer,
+          exposurePct: r.exposure[2].pct,
+          identifiersSent: r.exposure[2].distinct.length,
+          requestSha256: r.receipts.map((x) => x.r.request_sha256),
+        },
+      ],
+    };
+    await putRecord(await sealDoc(vaultKey, account, vdoc));
+    await refreshVault(vaultKey, account);
+  }
+
+  const activeVault = vaultItems.find((x) => x.rec.id === activeVaultId);
+  const restoreText = (t: string) =>
+    restoreSegments(t.replace(/\*\*(.+?)\*\*/g, "$1"), map)
+      .map((x) => x.text)
+      .join("");
+
   // Files are read in the browser only. PDFs go through pdf.js (local PageIndex).
   const onUpload = async (file: File) => {
     setDocKey("upload");
     setError("");
+    setShiftOverride(undefined);
+    setActiveVaultId(null);
     try {
       if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
         setLoadingDoc(`reading ${file.name} locally…`);
@@ -273,6 +400,26 @@ export default function App() {
         <Step n="1" title="Pick a document" aside="all samples are fictional" />
         <SamplePicker samples={samples} selected={docKey} onPick={setDocKey} onUpload={onUpload} />
         {loadingDoc && <p className="keyline" style={{ marginTop: 14 }}>{loadingDoc}</p>}
+        <VaultPanel
+          account={account}
+          unlocked={!!vaultKey}
+          busy={vaultBusy}
+          items={vaultItems}
+          activeId={activeVaultId}
+          canSave={!!doc && !vaultItems.some((x) => x.rec.docSha256 === docSha)}
+          currentTitle={docTitle}
+          error={vaultError}
+          onConnect={() => openConnect()}
+          onUnlock={unlockVault}
+          onLock={() => {
+            setVaultKey(null);
+            setVaultItems([]);
+            setActiveVaultId(null);
+          }}
+          onSave={saveToVault}
+          onOpen={openFromVault}
+          onDelete={removeFromVault}
+        />
 
         <Step n="2" title="Ask a question" aside="only the answer's sections will leave" />
         <AskBar
@@ -363,6 +510,7 @@ export default function App() {
               />
             )}
             <VerifiedPanel attestation={run.attestation} receipts={run.receipts} pending={phase === "attest"} />
+            {activeVault && <HistoryList entries={activeVault.doc.history} restore={restoreText} />}
           </div>
         </div>
 

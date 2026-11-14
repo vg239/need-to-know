@@ -37,7 +37,13 @@ const FIRST_NAMES = new Set(
   Henry Isabel Isabella Jack Jacob James Jane Jessica John Jorge Jose Joseph Juan Julia Kate Laura Leo Liam Lily Lucas
   Lucy Luis Marcus Maria Mark Martin Mary Matthew Maya Michael Mia Mohammed Nadia Noah Olivia Oliver Omar Paul Peter
   Priya Rachel Rahul Raj Robert Rosa Ryan Sam Samuel Sara Sarah Sofia Sophie Thomas Tom William Zara Hassan Ines Kenji
-  Wei Yuki Fernando Lucia Diego Pedro Ravi Anil Meera Kavya Neha`.split(/\s+/),
+  Wei Yuki Fernando Lucia Diego Pedro Ravi Anil Meera Kavya Neha Aidan Amit Andrea Angela Anthony Arun Ashish Ben
+  Brett Brian Bruce Catherine Chen Christopher Daniel David Deepak Dmitri Elizabeth Eric Eva Farah Feng Francesca
+  Gabriel George Giulia Hana Hiroshi Hugo Ian Igor Illia Ivan Jakob Jason Javier Jennifer Ji Jin Jonas Jorge Julian
+  Karim Karthik Kevin Kim Klaus Lars Laura Lei Li Lin Linda Ling Llion Luca Lukas Lukasz Manuel Marco Margaret Maria
+  Mario Markus Mateo Mei Michelle Miguel Ming Mohamed Nancy Natalia Niki Nikita Noam Olga Pablo Patrick Paula Pavel
+  Pierre Priyanka Rafael Rahul Rajesh Ricardo Robert Rohan Roman Ruth Sanjay Satya Sergey Shreya Simon Sneha Stefan
+  Steven Sunil Susan Takeshi Tanvi Thomas Tim Timothy Vikram Vincent Wang Xin Yan Yang Yasmin Yusuf Zhang Zhou`.split(/\s+/),
 );
 
 const PERSON_LABELS =
@@ -59,7 +65,8 @@ const RX = {
   address:
     /\b\d{1,4} [A-Z][a-z]+(?: [A-Z][a-z]+)* (?:Street|Road|Avenue|Hill|Square|Row|Lane|Way|Drive|Close|Crescent)\b(?:, (?:[A-Z][A-Za-z]*|\d+)(?: [A-Z0-9][A-Za-z0-9]*)*){0,3}/g,
   titled: /\b(?:Dr\.|Mr\.|Mrs\.|Ms\.|[Nn]urse)\s+([A-Z][a-z]+(?: [A-Z][a-z]+)?)/g,
-  bigram: /\b([A-Z][a-z]+) ([A-Z][a-z]+)\b/g,
+  // "First Last", optional middle initial, any script: Łukasz Kaiser, Aidan N. Gomez
+  bigram: /(?<![\p{L}])(\p{Lu}\p{Ll}+)(?: \p{Lu}\.)? (\p{Lu}\p{Ll}+)(?![\p{L}])/gu,
   org: /\b(?:[A-Z][\w']*(?: & | )){1,4}(?:Ltd|Hospital|Practice|School|Bank)\b/g,
 };
 
@@ -107,10 +114,18 @@ export function buildPiiMap(doc: string, shiftMonths = randomShift()): PiiMap {
   each(RX.org, (m) => add("ORG", m[0]));
   each(RX.titled, (m) => add("PERSON", m[1]));
 
-  // 3. Name-like bigrams: known first name, or a surname we already know.
+  // 3. Name-like bigrams: a known first name, a surname we already know, or a
+  //    name that matches an email's local part (avaswani@ → Ashish Vaswani,
+  //    noam@ → Noam Shazeer, usz@ → Jakob Uszkoreit).
   const surnames = new Set(entities.filter((e) => e.kind === "PERSON").map((e) => e.value.split(" ").pop()!));
+  const locals = entities.filter((e) => e.kind === "EMAIL").map((e) => e.value.split("@")[0].toLowerCase().replace(/[^a-z]/g, ""));
+  const inEmail = (first: string, last: string) => {
+    const f = first.toLowerCase();
+    const l = last.toLowerCase();
+    return locals.some((loc) => (l.length >= 4 && loc.includes(l)) || (f.length >= 4 && loc.includes(f)) || (loc.length >= 3 && (l.startsWith(loc) || f === loc)));
+  };
   each(RX.bigram, (m) => {
-    if (FIRST_NAMES.has(m[1]) || surnames.has(m[2])) add("PERSON", m[0]);
+    if (FIRST_NAMES.has(m[1]) || surnames.has(m[2]) || inEmail(m[1], m[2])) add("PERSON", m[0]);
   });
 
   // 4. Lone first names ("her husband Daniel") → alias of that person, if unambiguous.

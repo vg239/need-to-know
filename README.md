@@ -4,13 +4,9 @@
 
 > The TEE proves *where* your document was processed. Need-to-Know proves *how little* of it was sent.
 
-## The problem
+Need-to-Know is a private document Q&A app built on **NEAR AI Cloud**. Inference runs inside Intel TDX + NVIDIA confidential-computing enclaves, and every question starts with a fresh-nonce attestation, so nothing is sent until the enclave is verified. Documents are indexed, minimised and pseudonymised in your browser: the model receives only the few sections a question needs, with names and IDs replaced by codes, and the answer is restored locally. The enclave signs the exact bytes it received, so you can see and prove what left your machine. A NEAR wallet co-signs these exposure receipts and unlocks an encrypted vault for your documents that never leaves your browser.
 
-On 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator, not from a bug inside it, and AI tools still send far more of a document than a question needs.
-
-## The solution
-
-Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**. Your browser picks only the sections a question needs, replaces names and IDs with codes, and sends that sliver to a NEAR AI TEE that is attested with a fresh nonce first. The enclave signs the exact bytes it received, so you can see and prove what left: about **9% of the document and 0 real identifiers**, with the same accuracy as sending everything.
+**Why it matters:** on 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator and host, but not from a bug in the software running inside it, and AI tools usually send far more of a document than a question needs. Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**: about 8% of the document and zero real identifiers, with the same accuracy as sending everything.
 
 ---
 
@@ -27,6 +23,24 @@ Need-to-Know assumes the enclave can be breached and keeps what is there to stea
 ![Need-to-Know architecture](docs/architecture.svg)
 
 ## How it works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Browser
+    participant P as Stateless proxy
+    participant N as NEAR AI TEE
+    U->>U: index document, detect names and IDs
+    U->>P: /api/attest {fresh nonce}
+    P->>N: attestation report (gateway + GPU enclaves)
+    P-->>U: checks + verified signers (stop if any fail)
+    U->>U: pick sections, apply budget, pseudonymise
+    U->>P: /api/chat {minimal excerpt}
+    P->>N: exact request bytes
+    N-->>P: answer + signature over sha256(request), sha256(response)
+    P-->>U: answer, exact bytes, signature, checks
+    U->>U: re-hash bytes, restore names
+```
 
 | Step | Code | What happens |
 |---|---|---|
@@ -60,7 +74,20 @@ cd ../web && npm install && npm run dev     # app on http://localhost:5173
 
 ## End-to-end test flow
 
-Run `poc/verify_once.py` and it ends with `VERIFIED: YES (35/35 checks)`. Open the app, pick the **Medical record** and click the preset "What was the patient prescribed after surgery, and for how long?": the answer (ciprofloxacin, 5 days) arrives with about 9% of the document sent, 0 real identifiers and 35/35 checks, and **Breach replay** shows the exact request contains `PERSON_1`, never the patient's name, with its hash found inside the enclave's signature. Upload a real PDF such as [arXiv 1706.03762](https://arxiv.org/pdf/1706.03762v7) to see the table of contents built from its outline and an answer that sends none of the authors' names. Then connect Meteor, unlock the vault, save the document, ask, co-sign the receipt, and reload: the same signature reopens the vault with your earlier Q&A. This whole flow was run on mainnet with a real wallet and the live TEE model.
+With the proxy and app running ([Run it](#run-it)):
+
+1. **Attestation script.** Run `cd poc && uv run python verify_once.py`.
+   Expect `VERIFIED: YES (35/35 checks)`.
+2. **Ask about a sample.** Open http://localhost:5173, pick **Medical record**, click *"What was the patient prescribed after surgery, and for how long?"*.
+   Expect ciprofloxacin 500 mg twice daily for 5 days, about 9% of the document sent, 0 real identifiers, and 35/35 in the **Verified** panel.
+3. **Check the proof.** Scroll to **Breach replay**.
+   Expect the request to contain `PERSON_1`, never the patient's name, and *"these exact bytes are what the attested enclave signed for"*.
+4. **Use a real PDF.** Upload [arXiv 1706.03762](https://arxiv.org/pdf/1706.03762v7) and ask *"What BLEU score did the big Transformer reach on English-to-German?"*.
+   Expect the index built from the PDF outline, the answer 28.4, about 9% sent and no author names.
+5. **Wallet and vault.** Connect Meteor, click **Unlock vault**, **Save** the document, ask, then **Co-sign with NEAR**.
+   Expect the signature verified in the browser, the key confirmed on-chain, and a downloadable receipt.
+6. **Come back.** Reload and unlock again.
+   Expect the same vault with your document and earlier Q&A.
 
 ## Limits
 

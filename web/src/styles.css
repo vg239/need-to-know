@@ -202,6 +202,9 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius
 .doc { padding: 0; }
 .doc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1.5px solid var(--ink-16); flex-wrap: wrap; }
 .doc-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.doc-index { margin: 0; padding: 8px 18px; border-bottom: 1.5px dashed var(--ink-16); font-size: 12.5px; color: var(--ink-60); }
+.doc-index b { color: var(--ink); font-weight: 600; }
+.sec h4 .pg { margin-left: 8px; font-size: 11.5px; font-weight: 500; color: var(--ink-60); border: 1px solid var(--ink-16); border-radius: 3px; padding: 0 4px; }
 .doc-body { position: relative; padding: 18px 22px 28px; max-height: 720px; overflow: auto; font-size: 13.5px; line-height: 1.6; }
 .doc-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 18px; border-top: 1.5px solid var(--ink-16); font-size: 12.5px; color: var(--ink-60); }
 .doc-legend i { display: inline-block; width: 22px; height: 9px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }

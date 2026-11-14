@@ -46,8 +46,10 @@ export function DocumentPaper(props: {
   skeletonUsed: boolean;
   hasRun: boolean;
   runKey: number;
+  index: { sections: number; depth: number; source: string; pages?: number; ms: number };
+  pageOf: (headLine: number) => number | undefined;
 }) {
-  const { title, secs, map, sentIds, skeletonUsed, hasRun, runKey } = props;
+  const { title, secs, map, sentIds, skeletonUsed, hasRun, runKey, index, pageOf } = props;
   const [view, setView] = useState<"yours" | "enclave">("enclave");
   const sent = new Set(sentIds);
   const ids = map.entities.length;
@@ -73,6 +75,10 @@ export function DocumentPaper(props: {
           </button>
         </div>
       </div>
+      <p className="doc-index">
+        Local index: <b>{index.sections}</b> sections · {index.depth} level{index.depth === 1 ? "" : "s"} · from {index.source}
+        {index.pages ? ` · ${index.pages} pages` : ""} · built in {index.ms < 1 ? "<1" : Math.round(index.ms)} ms · <b>0 bytes sent</b>
+      </p>
       <div className="doc-body" ref={bodyRef} key={`${view}-${runKey}`}>
         {view === "enclave" && !hasRun && (
           <p className="hand" style={{ fontSize: 20, margin: "0 0 10px" }}>
@@ -89,6 +95,7 @@ export function DocumentPaper(props: {
                 {isSent && <span className="margin-note">sent ✓</span>}
                 <h4 className={`l${lvl}`}>
                   <Segs segs={markIdentifiers(heading, map)} map={map} />
+                  {pageOf(s.headLine) ? <span className="pg">p. {pageOf(s.headLine)}</span> : null}
                 </h4>
                 {s.body && (
                   <p className="body">
@@ -105,7 +112,10 @@ export function DocumentPaper(props: {
               {isSent && <span className="margin-note">sent ✓</span>}
               <h4 className={`l${lvl}`}>
                 {headingShown ? (
-                  <Segs segs={markCodes(pseudonymise(heading, map))} />
+                  <>
+                    <Segs segs={markCodes(pseudonymise(heading, map))} />
+                    {pageOf(s.headLine) ? <span className="pg">p. {pageOf(s.headLine)}</span> : null}
+                  </>
                 ) : (
                   <Redacted text={heading} soft={!hasRun} />
                 )}

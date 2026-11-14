@@ -17,11 +17,12 @@ export function SamplePicker({
   samples: SampleMeta[];
   selected: string;
   onPick: (key: string) => void;
-  onUpload: (name: string, text: string) => void;
+  onUpload: (file: File) => void;
 }) {
-  const upload = async (e: ChangeEvent<HTMLInputElement>) => {
+  const upload = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) onUpload(f.name, await f.text()); // read in the browser — never uploaded anywhere
+    if (f) onUpload(f); // read in the browser, never uploaded anywhere
+    e.target.value = "";
   };
   return (
     <div className="samples">
@@ -39,13 +40,13 @@ export function SamplePicker({
       ))}
       <label className="paper polaroid upload" aria-pressed={selected === "upload"}>
         <div className="photo">
-          your own .md / .txt
+          your own .pdf / .md / .txt
           <br />
           read locally, never uploaded
         </div>
         <p className="cap">bring your own</p>
         <p className="sub">stays in this browser tab</p>
-        <input className="sr-only" type="file" accept=".md,.txt,text/plain,text/markdown" onChange={upload} />
+        <input className="sr-only" type="file" accept=".pdf,.md,.txt,application/pdf,text/plain,text/markdown" onChange={upload} />
       </label>
     </div>
   );

@@ -11,6 +11,7 @@ import { buildPiiMap, pseudonymise } from "./lib/pii";
 import { applyBudget, answerMessages } from "./lib/plan";
 import { parseSkeletonReply, rankSections, skeletonLines, skeletonMessages } from "./lib/retrieval";
 import { leaves, sectionize } from "./lib/sectionize";
+import { pdfToStructuredText, type PdfResult } from "./lib/pdf";
 
 const MODEL = "z-ai/glm-5.3-flash"; // NEAR-hosted TEE model (owned_by: nearai)
 
@@ -43,6 +44,8 @@ export default function App() {
   const [samples, setSamples] = useState<SampleMeta[]>([]);
   const [docKey, setDocKey] = useState("medical_record");
   const [docTitle, setDocTitle] = useState("");
+  const [pdf, setPdf] = useState<Omit<PdfResult, "text"> | null>(null); // set when the document came from a PDF
+  const [loadingDoc, setLoadingDoc] = useState("");
   const [doc, setDoc] = useState("");
   const [question, setQuestion] = useState("");
   const [budget, setBudget] = useState(10);
@@ -80,14 +83,28 @@ export default function App() {
     fetch(`/samples/${s.file}`)
       .then((r) => r.text())
       .then((t) => {
+        setPdf(null);
         setDoc(t);
         setDocTitle(s.title);
       });
   }, [docKey, samples]);
 
   // Everything below is computed locally. `map` (real ↔ placeholder) never leaves this component.
-  const secs = useMemo(() => sectionize(doc), [doc]);
-  const map = useMemo(() => buildPiiMap(doc), [doc]);
+  // Local PageIndex: section tree + PII map, built in the browser. Timed to show it costs ~nothing.
+  const { secs, map, indexMs } = useMemo(() => {
+    const t0 = performance.now();
+    const secs = sectionize(doc, { markdownOnly: !!pdf });
+    const map = buildPiiMap(doc);
+    return { secs, map, indexMs: performance.now() - t0 };
+  }, [doc, pdf]);
+  const pageOf = (headLine: number) => (pdf ? pdf.lineToPage[headLine] : undefined);
+  const indexInfo = {
+    sections: secs.filter((x) => x.level > 1).length,
+    depth: Math.max(0, ...secs.map((x) => x.level)) - 1,
+    source: pdf ? pdf.tocSource : "document headings",
+    pages: pdf?.pages,
+    ms: indexMs,
+  };
   const candidates = useMemo(() => leaves(secs).filter((s) => s.level > 1), [secs]);
 
   useEffect(() => {
@@ -171,10 +188,28 @@ export default function App() {
     }
   }
 
-  const onUpload = (name: string, text: string) => {
+  // Files are read in the browser only. PDFs go through pdf.js (local PageIndex).
+  const onUpload = async (file: File) => {
     setDocKey("upload");
-    setDocTitle(name);
-    setDoc(text);
+    setError("");
+    try {
+      if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
+        setLoadingDoc(`reading ${file.name} locally…`);
+        const { text, ...meta } = await pdfToStructuredText(await file.arrayBuffer(), file.name);
+        setPdf(meta);
+        setDocTitle(file.name);
+        setDoc(text);
+      } else {
+        setPdf(null);
+        setDocTitle(file.name);
+        setDoc(await file.text());
+      }
+    } catch (e) {
+      setError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`);
+      setPhase("error");
+    } finally {
+      setLoadingDoc("");
+    }
   };
 
   return (
@@ -186,6 +221,7 @@ export default function App() {
       <main className="wrap" id="demo">
         <Step n="1" title="Pick a document" aside="all samples are fictional" />
         <SamplePicker samples={samples} selected={docKey} onPick={setDocKey} onUpload={onUpload} />
+        {loadingDoc && <p className="keyline" style={{ marginTop: 14 }}>{loadingDoc}</p>}
 
         <Step n="2" title="Ask a question" aside="only the answer's sections will leave" />
         <AskBar
@@ -222,7 +258,13 @@ export default function App() {
             <div className="error-note budget-note">
               <span>
                 <b>{run.dropped.length} more relevant section{run.dropped.length > 1 ? "s" : ""}</b> (
-                {run.dropped.slice(0, 5).map((d) => `§${d}`).join(", ")}
+                {run.dropped
+                  .slice(0, 5)
+                  .map((d) => {
+                    const sec = secs.find((x) => x.id === d);
+                    return sec?.num ? `§${sec.num}` : `"${sec?.title ?? d}"`;
+                  })
+                  .join(", ")}
                 {run.dropped.length > 5 ? "…" : ""}) didn't fit your {budget}% budget, so the enclave never saw them.
               </span>
               <button
@@ -248,6 +290,8 @@ export default function App() {
               skeletonUsed={run.skeletonUsed}
               hasRun={!!run.answer}
               runKey={runKey}
+              index={indexInfo}
+              pageOf={pageOf}
             />
           )}
           <div className="col">

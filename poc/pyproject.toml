@@ -1,0 +1,9 @@
+[project]
+name = "poc"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "dcap-qvl>=0.7.1",
+    "eth-account>=0.14.0",
+    "requests>=2.34.2",
+]

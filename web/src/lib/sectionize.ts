@@ -25,7 +25,12 @@ function splitNum(text: string): { num: string; title: string } {
   return m ? { num: m[1], title: m[2] } : { num: "", title: text };
 }
 
-export function sectionize(doc: string): Section[] {
+/**
+ * @param opts.markdownOnly only "#" headings count. Used for PDF-derived text,
+ *   whose headings were already found from the outline / font sizes, so a
+ *   table row like "2024 Revenue $56,517" is not mistaken for a heading.
+ */
+export function sectionize(doc: string, opts: { markdownOnly?: boolean } = {}): Section[] {
   const lines = doc.replace(/\r\n/g, "\n").split("\n");
   const out: Section[] = [];
   const stack: Section[] = [];
@@ -49,6 +54,8 @@ export function sectionize(doc: string): Section[] {
     if (md) {
       level = md[1].length;
       text = md[2];
+    } else if (opts.markdownOnly) {
+      level = 0;
     } else if (NUM_HEADING.test(line) && line.length < 80 && !line.includes(":")) {
       const n = line.match(NUM_HEADING)!;
       level = 1 + n[1].split(".").length;

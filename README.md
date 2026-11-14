@@ -4,12 +4,6 @@
 
 > The TEE proves *where* your document was processed. Need-to-Know proves *how little* of it was sent.
 
-| | |
-|---|---|
-| **Hackathon** | NEAR Hackathon 2026, **Privacy & Private AI** track |
-| **Demo video** | *(add link)* |
-| **Built on** | NEAR AI Cloud (TEE inference + attestation), NEAR wallet (NEP-413), NEAR RPC |
-
 ## The problem
 
 On 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator, not from a bug inside it, and AI tools still send far more of a document than a question needs.
@@ -17,17 +11,6 @@ On 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine r
 ## The solution
 
 Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**. Your browser picks only the sections a question needs, replaces names and IDs with codes, and sends that sliver to a NEAR AI TEE that is attested with a fresh nonce first. The enclave signs the exact bytes it received, so you can see and prove what left: about **9% of the document and 0 real identifiers**, with the same accuracy as sending everything.
-
-## Track requirements
-
-| Requirement | Where |
-|---|---|
-| NEAR AI Cloud, OpenAI-compatible API, key in `.env` | `server/app.py` (users can also bring their own key) |
-| TEE model | `z-ai/glm-5.3-flash`; only `owned_by: "nearai"` models are offered |
-| Attestation with a fresh nonce, shown in the UI | `server/verify.py`: 35 checks (Intel TDX, NVIDIA, nonce, signer, compose hash, RTMR3, response signature), shown in the **Verified** panel |
-| Nothing kept server-side | `server/app.py` is a stateless proxy: no database, no files, no logs |
-| Sample data | Three fictional documents in `web/public/samples/` |
-| Minimal script | `poc/verify_once.py`: one attested, verified completion |
 
 ---
 
@@ -88,11 +71,6 @@ Run `poc/verify_once.py` and it ends with `VERIFIED: YES (35/35 checks)`. Open t
 ## Disclosures
 
 Coding was done using [Claude Code](https://claude.com/claude-code).
-
-## Contributors
-
-- **Vatsal** ([@vg239](https://github.com/vg239)): idea, direction, review and testing
-- **Claude** ([Claude Code](https://claude.com/claude-code) by Anthropic): coding
 
 ## License
 

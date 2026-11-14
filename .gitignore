@@ -1,0 +1,19 @@
+# Secrets — NEVER commit the NEAR AI API key
+.env
+.env.*
+!.env.example
+
+# Dependencies / build output
+node_modules/
+dist/
+build/
+.vite/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local artifacts (attestation dumps, scratch output)
+out/
+*.log
+.DS_Store

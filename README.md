@@ -85,7 +85,7 @@ flowchart LR
     subgraph P["Stateless proxy (FastAPI)"]
         ATT["/api/attest<br/>verify.py"]
         CHAT["/api/chat<br/>exact bytes, signature check"]
-        KEY["API key from .env<br/>in memory only"]
+        KEY["NEAR AI key<br/>user's own (per-request header)<br/>or .env fallback, memory only"]
     end
 
     subgraph N["NEAR AI Cloud"]
@@ -174,7 +174,9 @@ Only models with `owned_by: "nearai"` are offered. NEAR AI hosts these in TEEs; 
 
 - No database, no files written and no caches of user data. The server code contains no `open(` or `write` calls.
 - The uvicorn access log is **off** (`server/main.py`). Request and response bodies are never logged and are dropped when the response returns.
-- The only secret is the NEAR AI API key, read from `.env` into memory.
+- The NEAR AI key comes from one of two places, and neither is stored:
+  - **Your own key** (bring-your-own-key): saved only in your browser's localStorage, sent in an `X-NearAI-Key` header with each request, used as a local variable for that one upstream call, then dropped. Never logged, cached or written.
+  - **The server's key** from `.env`, held in memory. Optional: without it, every visitor brings their own.
 - The pseudonym-to-identity map is created and kept **in the browser** and never reaches the server.
 - The verified-signer list from `/api/attest` is sent back by the browser with each `/api/chat` call, so the server never has to remember a session.
 
@@ -201,17 +203,18 @@ Why have a server at all? The track requires the API key in `.env`, and Intel an
 
 ## Quick start
 
-Requirements: Python 3.12 with [uv](https://docs.astral.sh/uv/), Node 20 or newer, and a NEAR AI Cloud API key.
+Requirements: Python 3.12 with [uv](https://docs.astral.sh/uv/), Node 20 or newer, and a NEAR AI Cloud API key (get one at [cloud.near.ai](https://cloud.near.ai), or claim $10 free via [NEAR Builders](https://nearbuilders.org/join)).
 
 | Do | See |
 |---|---|
-| `cp .env.example .env`, then put your key after `API_KEY=` | `.env` exists (it is git-ignored) |
+| `cp .env.example .env`, then put your key after `API_KEY=` (optional, see the last row) | `.env` exists (it is git-ignored) |
 | `cd poc && uv run python verify_once.py` | Ends with `VERIFIED: YES (35/35 checks)` |
 | `cd server && uv run python main.py` | Proxy on port 8000. `curl localhost:8000/api/health` returns `{"ok":true,"stateless":true}` |
 | `cd web && npm install && npm run dev` | App on http://localhost:5173 |
 | Open http://localhost:5173 and click a preset question | Answer, Exposure Meter, Verified panel (all checks ticked), Breach Replay |
 | `cd web && npm run bench` (proxy running) | Prints the benchmark table and rewrites `web/public/bench.json` |
 | `cd web && npm run build`, then restart the proxy | The proxy also serves the built app at http://localhost:8000 |
+| No `.env` key? Click **API key** in the top bar and paste your own | The status line says "Running on your own NEAR AI key", and the key stays in your browser only |
 
 All sample documents are **fictional** (`web/public/samples/`), so no real data is needed.
 
@@ -241,7 +244,7 @@ Start the proxy and the web app as in [Quick start](#quick-start), then open htt
 
 | # | Do | Expect |
 |---|---|---|
-| A1 | Load the page | Green grid background, cream paper cards, only two colours. Headings in Inter, handwritten notes in Indie Flower. |
+| A1 | Load the page | White drafting-paper grid, navy ink, cards with a crisp navy border and offset shadow. Only two colours. Headings in Inter, handwritten notes in Indie Flower. |
 | A2 | Look at step 1 | Three polaroid cards (Medical record selected) and a "bring your own" card |
 | A3 | In the document card, click **Your view** | Full text, with every detected identifier dotted-underlined. Hover one to see the code it leaves as (for example `PERSON_1`). The legend counts 29 identifiers for the medical record. |
 | A4 | Click **What the enclave saw** | Everything is faded redaction bars, with the note "nothing has left your browser yet" |
@@ -295,6 +298,17 @@ Start the proxy and the web app as in [Quick start](#quick-start), then open htt
 | F2 | `touch /tmp/m`, ask three questions, then `find . -newer /tmp/m -type f -not -path "*/node_modules/*" -not -path "*/.venv/*"` | No new files |
 | F3 | Watch the proxy terminal while asking | No request lines or bodies are printed |
 
+### G. Bring your own NEAR AI key
+
+| # | Do | Expect |
+|---|---|---|
+| G1 | Click **API key** in the top bar | A dialog explains the key is stored only in this browser, sent per request in a header and never stored by the server, with links to get a key |
+| G2 | Paste a valid key and click **Save key** | The top bar shows a filled dot and "Your key". The line under the controls says "Running on your own NEAR AI key (ending ....)". |
+| G3 | Ask a preset | Works as before (35/35). In DevTools, Network, `/api/chat`, the request has an `X-NearAI-Key` header. |
+| G4 | Save an invalid key such as `sk-test`, then ask | A 401 note: "NEAR AI rejected the key", and the dialog reopens. Your own key always takes priority over the server key. |
+| G5 | Click **Remove my key** | Back to "Running on the demo server's key", or "No key yet" when the server has none |
+| G6 | Run the proxy without `.env` and open the app | The line says "No key yet". Asking opens the key dialog instead of failing. |
+
 ---
 
 ## Repository map
@@ -324,6 +338,7 @@ Start the proxy and the web app as in [Quick start](#quick-start), then open htt
 - **Where verification runs:** quote verification runs in our proxy because it needs native libraries. Request hashing and the comparison with the signature run in the browser. Moving the full verifier into the browser (WASM) is future work.
 - **Detector recall:** PII detection uses regular expressions, labelled fields and a name list, so it can miss unusual identifiers. The Exposure Meter scans the actual bytes sent, but only for identifiers the detector found.
 - **Content can still identify:** pseudonymisation hides identities, not facts. A rare diagnosis combined with a shifted date could still narrow down a person. Minimisation keeps that combined exposure small, and the budget makes it a choice the user sees.
+- **Your own key in the browser:** a key in localStorage can be read by any script running on the page. The app loads no third-party scripts (only Google Fonts CSS), but a key with a small balance is still the safer choice.
 - **Signature guarantees:** per NEAR's docs, a `provider_tee` signature proves the response came from a model enclave holding that key. Instances of the same model share a key.
 
 ---

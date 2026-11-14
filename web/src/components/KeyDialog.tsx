@@ -6,13 +6,11 @@ export function KeyDialog({
   onClose,
   userKey,
   onSave,
-  serverKey,
 }: {
   open: boolean;
   onClose: () => void;
   userKey: string;
   onSave: (k: string) => void;
-  serverKey: boolean;
 }) {
   const [draft, setDraft] = useState(userKey);
   const [show, setShow] = useState(false);
@@ -63,8 +61,8 @@ export function KeyDialog({
           </button>
         </form>
         <p className="status">
-          Now using:{" "}
-          <b>{userKey ? `your key ending …${userKey.slice(-4)}` : serverKey ? "the server's key" : "no key yet"}</b>
+          Personal key:{" "}
+          <b>{userKey ? `your key ending …${userKey.slice(-4)}` : "no personal key saved"}</b>
         </p>
         <div className="actions">
           <button className="btn ghost" disabled={!userKey} onClick={() => onSave("")}>

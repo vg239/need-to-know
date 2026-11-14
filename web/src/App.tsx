@@ -394,7 +394,7 @@ export default function App() {
       <Nav hasUserKey={!!userKey} onKey={() => setKeyOpen(true)}>
         <WalletButton account={account} onConnect={() => openConnect()} onDisconnect={() => disconnect()} />
       </Nav>
-      <KeyDialog open={keyOpen} onClose={() => setKeyOpen(false)} userKey={userKey} onSave={onSaveKey} serverKey={serverKey} />
+      <KeyDialog open={keyOpen} onClose={() => setKeyOpen(false)} userKey={userKey} onSave={onSaveKey} />
       <Hero />
       <main className="wrap" id="demo">
         <Step n="1" title="Pick a document" aside="all samples are fictional" />
@@ -433,22 +433,27 @@ export default function App() {
           busy={busy}
           onAsk={(q) => ask(q)}
         />
-        <p className="keyline" style={{ marginTop: 12 }}>
-          {userKey ? (
-            <>
-              Running on <b>your own NEAR AI key</b> (ending …{userKey.slice(-4)}, stored only in this browser).
-            </>
-          ) : serverKey ? (
-            <>Running on the demo server's key.</>
-          ) : (
-            <>
-              <b>No key yet.</b> Add your NEAR AI key to ask questions.
-            </>
-          )}
-          <button className="linkish" type="button" onClick={() => setKeyOpen(true)}>
-            {userKey ? "change" : "use your own key"}
-          </button>
-        </p>
+        <label className="keycheck">
+          <input
+            type="checkbox"
+            checked={!!userKey}
+            onChange={(e) => (e.target.checked ? setKeyOpen(true) : onSaveKey(""))}
+          />
+          <span>
+            Use my own NEAR AI key
+            {userKey ? (
+              <>
+                {" "}
+                <span className="muted">(…{userKey.slice(-4)}, stored only in this browser)</span>{" "}
+                <button className="linkish" type="button" onClick={() => setKeyOpen(true)}>
+                  change
+                </button>
+              </>
+            ) : !serverKey ? (
+              <span className="muted"> (needed to ask questions)</span>
+            ) : null}
+          </span>
+        </label>
         <div style={{ marginTop: 16 }}>
           <Progress phase={phase} routing={routing} />
           {error && <p className="error-note">✗ {error}</p>}

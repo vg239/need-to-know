@@ -4,7 +4,8 @@ import { AskBar, Progress, SamplePicker, type Phase, type Routing, type SampleMe
 import { AnswerCard, DocumentPaper } from "./components/Document";
 import { BreachReplay, ExposureMeter, VerifiedPanel } from "./components/Evidence";
 import { Benchmark, HowItWorks } from "./components/Explain";
-import { attest, chat, freshNonce, type Attestation, type ChatReceipt } from "./lib/api";
+import { ApiError, attest, chat, freshNonce, getUserKey, health, saveUserKey, type Attestation, type ChatReceipt } from "./lib/api";
+import { KeyDialog } from "./components/KeyDialog";
 import { computeExposure, type ModeExposure } from "./lib/exposure";
 import { buildPiiMap, pseudonymise } from "./lib/pii";
 import { applyBudget, answerMessages } from "./lib/plan";
@@ -50,6 +51,20 @@ export default function App() {
   const [error, setError] = useState("");
   const [run, setRun] = useState<Run>(emptyRun());
   const [runKey, setRunKey] = useState(0);
+  // Bring-your-own key: lives in localStorage only (see lib/api.ts).
+  const [userKey, setUserKey] = useState(getUserKey);
+  const [serverKey, setServerKey] = useState(true);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const onSaveKey = (k: string) => {
+    saveUserKey(k);
+    setUserKey(k);
+  };
+
+  useEffect(() => {
+    health()
+      .then((h) => setServerKey(!!h.server_key))
+      .catch(() => setServerKey(false));
+  }, []);
 
   // Sample catalogue
   useEffect(() => {
@@ -87,6 +102,10 @@ export default function App() {
   async function ask(q = question, budgetPct = budget) {
     q = q.trim();
     if (!q || busy || !doc) return;
+    if (!userKey && !serverKey) {
+      setKeyOpen(true); // nobody has a key yet: ask for the user's own
+      return;
+    }
     setError("");
     const r = emptyRun(q);
     setRun(r);
@@ -102,7 +121,10 @@ export default function App() {
       // 2. Choose sections.
       setPhase("route");
       // Local first (zero bytes leave to make the choice). Benchmark: 20/20 at 10% budget.
-      let ranked: string[] = routing === "bm25" ? rankSections(q, candidates).map((x) => x.id).slice(0, 6) : [];
+      const scored = routing === "bm25" ? rankSections(q, candidates).slice(0, 6) : [];
+      let ranked: string[] = scored.map((x) => x.id);
+      // Only strong matches (>= 80% of the top score) count as "relevant but cut by the budget".
+      const strong = new Set(scored.filter((x) => x.score >= 0.8 * (scored[0]?.score ?? 0)).map((x) => x.id));
       // Vague questions ("audit my spending") share no keywords with any section →
       // fall back to routing on pseudonymised headings inside the TEE.
       if (!ranked.length) {
@@ -117,8 +139,9 @@ export default function App() {
       const sel = applyBudget(ranked, candidates, doc.length, budgetPct);
       r.sentIds = sel.sent.map((s) => s.id);
       r.overBudget = sel.overBudget;
-      r.dropped = sel.dropped.map((s) => s.id);
-      const all = [...sel.sent, ...sel.dropped].reduce((n, s) => n + s.title.length + s.body.length, 0);
+      const droppedRelevant = r.skeletonUsed ? sel.dropped : sel.dropped.filter((s) => strong.has(s.id));
+      r.dropped = droppedRelevant.map((s) => s.id);
+      const all = [...sel.sent, ...droppedRelevant].reduce((n, s) => n + s.title.length + s.body.length, 0);
       r.neededPct = Math.min(100, Math.ceil((100 * all) / doc.length) + 8); // headroom: routing may vary slightly
       setRun({ ...r });
 
@@ -144,6 +167,7 @@ export default function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPhase("error");
+      if (e instanceof ApiError && e.status === 401) setKeyOpen(true);
     }
   }
 
@@ -156,7 +180,8 @@ export default function App() {
   return (
     <div className="app">
       <Drafting />
-      <Nav />
+      <Nav hasUserKey={!!userKey} onKey={() => setKeyOpen(true)} />
+      <KeyDialog open={keyOpen} onClose={() => setKeyOpen(false)} userKey={userKey} onSave={onSaveKey} serverKey={serverKey} />
       <Hero />
       <main className="wrap" id="demo">
         <Step n="1" title="Pick a document" aside="all samples are fictional" />
@@ -174,6 +199,22 @@ export default function App() {
           busy={busy}
           onAsk={(q) => ask(q)}
         />
+        <p className="keyline" style={{ marginTop: 12 }}>
+          {userKey ? (
+            <>
+              Running on <b>your own NEAR AI key</b> (ending …{userKey.slice(-4)}, stored only in this browser).
+            </>
+          ) : serverKey ? (
+            <>Running on the demo server's key.</>
+          ) : (
+            <>
+              <b>No key yet.</b> Add your NEAR AI key to ask questions.
+            </>
+          )}
+          <button className="linkish" type="button" onClick={() => setKeyOpen(true)}>
+            {userKey ? "change" : "use your own key"}
+          </button>
+        </p>
         <div style={{ marginTop: 16 }}>
           <Progress phase={phase} routing={routing} />
           {error && <p className="error-note">✗ {error}</p>}
@@ -223,7 +264,7 @@ export default function App() {
                 modes={run.exposure}
                 budget={budget}
                 overBudget={run.overBudget}
-                headingPct={run.skeletonUsed ? (100 * run.skeletonChars) / doc.length : 0}
+                headingPct={run.skeletonUsed ? (100 * (run.exposure[2].headingChars ?? 0)) / doc.length : 0}
               />
             )}
             <VerifiedPanel attestation={run.attestation} receipts={run.receipts} pending={phase === "attest"} />

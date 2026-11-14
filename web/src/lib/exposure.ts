@@ -8,7 +8,7 @@
 import { countIdentifiers, identifiersIn, type PiiMap } from "./pii";
 import { typicalRagChunks, RAG_CHUNK_CHARS, RAG_TOP_K } from "./retrieval";
 import { sectionChars } from "./plan";
-import type { Section } from "./sectionize";
+import { label, type Section } from "./sectionize";
 
 export type ModeKey = "full" | "rag" | "ntk";
 
@@ -28,6 +28,7 @@ export interface ModeExposure {
   distinct: string[]; // distinct real identifiers revealed
   lines: ("hidden" | "exposed" | "heading")[]; // per document line, for the minimap
   idLines: boolean[]; // lines whose exposure includes a raw identifier
+  headingChars?: number; // ntk only: heading text sent for routing, not already counted in sent sections
 }
 
 export function docLines(doc: string): Line[] {
@@ -94,11 +95,15 @@ export function computeExposure(args: {
   });
   const payload = ntkPayloads.join("\n");
   const sentChars = secs.filter((s) => sent.has(s.id)).reduce((n, s) => n + sectionChars(s), 0);
+  // Headings of sections that were ALSO sent in full are already inside sentChars: count them once.
+  const overlap = skeletonUsed ? secs.filter((s) => sent.has(s.id)).reduce((n, s) => n + label(s).length + 1, 0) : 0;
+  const headingChars = skeletonUsed ? Math.max(0, skeletonChars - overlap) : 0;
   const ntk: ModeExposure = {
     key: "ntk",
     label: "Need-to-Know",
     note: skeletonUsed ? "headings + chosen sections · pseudonymised" : "locally chosen sections · pseudonymised",
-    chars: sentChars + (skeletonUsed ? skeletonChars : 0),
+    chars: Math.min(total, sentChars + headingChars),
+    headingChars,
     pct: 0,
     identifiers: countIdentifiers(payload, map), // scanned in the REAL bytes — should be 0
     distinct: identifiersIn(payload, map),

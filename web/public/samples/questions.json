@@ -1,0 +1,58 @@
+{
+  "medical_record": {
+    "title": "Medical record",
+    "subtitle": "Hospital admission, surgery & billing",
+    "file": "medical_record.md",
+    "presets": [
+      "What was the patient prescribed after surgery, and for how long?",
+      "Does the patient have any allergies that affected treatment?",
+      "Were there any complications after the operation?"
+    ],
+    "bench": [
+      { "q": "What antibiotic was the patient prescribed on discharge after surgery?", "expect": ["ciprofloxacin"] },
+      { "q": "For how many days was the discharge antibiotic prescribed?", "expect": ["5"] },
+      { "q": "What is the patient allergic to?", "expect": ["penicillin"] },
+      { "q": "What was the final diagnosis for this admission?", "expect": ["cholecystitis"] },
+      { "q": "What complication was found at the 10-day review?", "expect": ["wound infection"] },
+      { "q": "How was the post-operative wound infection treated?", "expect": ["doxycycline"] },
+      { "q": "What was the white cell count on admission?", "expect": ["14.2"] },
+      { "q": "How long did the operation take?", "expect": ["74"] },
+      { "q": "What medication does the patient take for hypothyroidism?", "expect": ["levothyroxine"] },
+      { "q": "How much did the patient have to pay out of pocket?", "expect": ["3,978", "3978"] }
+    ]
+  },
+  "bank_statement": {
+    "title": "Bank statement",
+    "subtitle": "Two months of spending — audit it",
+    "file": "bank_statement.md",
+    "presets": [
+      "Audit my spending: categorise it and flag anything unusual.",
+      "Are there any duplicate or suspicious charges?",
+      "How much did I spend on groceries in October?"
+    ],
+    "bench": [
+      { "q": "Was there a duplicate subscription charge in September? Which merchant?", "expect": ["cloudvault"] },
+      { "q": "Where were the unusual night-time ATM withdrawals made?", "expect": ["lisbon"] },
+      { "q": "How much was the suspicious urgent transfer?", "expect": ["1,850", "1850"] },
+      { "q": "Why was the October energy bill unusual?", "expect": ["212"] },
+      { "q": "What was the closing balance?", "expect": ["3,074.72", "3074.72"] }
+    ]
+  },
+  "employment_contract": {
+    "title": "Employment contract",
+    "subtitle": "Salary, notice, non-compete",
+    "file": "employment_contract.md",
+    "presets": [
+      "What is the notice period after probation?",
+      "How long does the non-compete last, and how far does it reach?",
+      "What is the salary and maximum bonus?"
+    ],
+    "bench": [
+      { "q": "What is the starting salary?", "expect": ["68,500", "68500"] },
+      { "q": "What is the notice period after probation?", "expect": ["3 months", "three months"] },
+      { "q": "How long does the non-compete restriction last?", "expect": ["6 months", "six months"] },
+      { "q": "What percentage does the employer contribute to the pension?", "expect": ["7"] },
+      { "q": "How many days of holiday per year at the start?", "expect": ["27"] }
+    ]
+  }
+}

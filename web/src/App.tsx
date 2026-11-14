@@ -6,6 +6,9 @@ import { BreachReplay, ExposureMeter, VerifiedPanel } from "./components/Evidenc
 import { Benchmark, HowItWorks } from "./components/Explain";
 import { ApiError, attest, chat, freshNonce, getUserKey, health, saveUserKey, type Attestation, type ChatReceipt } from "./lib/api";
 import { KeyDialog } from "./components/KeyDialog";
+import { WalletButton } from "./components/Wallet";
+import { accessKeyPermission, activeAccount, disconnect, onAccountChange, openConnect, setupWallet, signNep413, verifyNep413 } from "./lib/near";
+import { receiptFile, receiptMessage, type CoSigned } from "./lib/receipt";
 import { computeExposure, type ModeExposure } from "./lib/exposure";
 import { buildPiiMap, pseudonymise } from "./lib/pii";
 import { applyBudget, answerMessages } from "./lib/plan";
@@ -27,6 +30,7 @@ interface Run {
   dropped: string[]; // relevant sections the budget cut
   neededPct: number; // budget that would have fit every relevant section
   exposure?: ModeExposure[];
+  cosign?: CoSigned; // the user's NEP-413 co-signature over the exposure receipt
 }
 
 const emptyRun = (question = ""): Run => ({
@@ -62,6 +66,51 @@ export default function App() {
     saveUserKey(k);
     setUserKey(k);
   };
+
+  // NEAR wallet (identity, receipt co-signing, vault key). Nothing is sent to our server.
+  const [account, setAccount] = useState<string | null>(null);
+  const [cosignError, setCosignError] = useState("");
+  useEffect(() => {
+    let unsub = () => {};
+    setupWallet()
+      .then(() => {
+        setAccount(activeAccount());
+        unsub = onAccountChange(setAccount);
+      })
+      .catch(() => setAccount(null));
+    return () => unsub();
+  }, []);
+
+  async function cosignReceipt() {
+    if (!run.attestation || !run.exposure) return;
+    setCosignError("");
+    try {
+      const ntk = run.exposure[2];
+      const message = await receiptMessage({
+        question: run.question,
+        attestation: run.attestation,
+        receipts: run.receipts,
+        exposurePct: ntk.pct,
+        identifiersSent: ntk.distinct.length,
+      });
+      const sig = await signNep413(message, crypto.getRandomValues(new Uint8Array(32)));
+      const signatureValid = verifyNep413(sig) && (!account || sig.accountId === account);
+      const keyOnChain = await accessKeyPermission(sig.accountId, sig.publicKey);
+      setRun((cur) => ({ ...cur, cosign: { message, sig, signatureValid, keyOnChain } }));
+    } catch (e) {
+      setCosignError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function downloadReceipt() {
+    if (!run.cosign || !run.attestation) return;
+    const url = URL.createObjectURL(receiptFile(run.cosign, run.attestation, run.receipts));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `need-to-know-receipt-${run.receipts[run.receipts.length - 1]?.r.request_sha256.slice(0, 12)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     health()
@@ -215,7 +264,9 @@ export default function App() {
   return (
     <div className="app">
       <Drafting />
-      <Nav hasUserKey={!!userKey} onKey={() => setKeyOpen(true)} />
+      <Nav hasUserKey={!!userKey} onKey={() => setKeyOpen(true)}>
+        <WalletButton account={account} onConnect={() => openConnect()} onDisconnect={() => disconnect()} />
+      </Nav>
       <KeyDialog open={keyOpen} onClose={() => setKeyOpen(false)} userKey={userKey} onSave={onSaveKey} serverKey={serverKey} />
       <Hero />
       <main className="wrap" id="demo">
@@ -317,7 +368,16 @@ export default function App() {
 
         <Step n="3" id="replay" title="Breach replay" aside="if this enclave were breached right now, the attacker gets ↓" />
         {run.exposure && run.receipts.length ? (
-          <BreachReplay modes={run.exposure} receipts={run.receipts} />
+          <BreachReplay
+            modes={run.exposure}
+            receipts={run.receipts}
+            account={account}
+            cosign={run.cosign}
+            cosignError={cosignError}
+            onConnect={() => openConnect()}
+            onCosign={cosignReceipt}
+            onDownload={downloadReceipt}
+          />
         ) : (
           <div className="empty">
             <p className="hand">ask something first</p>

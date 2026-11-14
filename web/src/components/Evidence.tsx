@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Attestation, ChatReceipt, Check } from "../lib/api";
 import { sha256Hex } from "../lib/api";
 import type { ModeExposure } from "../lib/exposure";
+import type { CoSigned } from "../lib/receipt";
 
 // ─────────────────────────── Exposure Meter ───────────────────────────
 
@@ -186,7 +187,25 @@ function HashCheck({ r }: { r: ChatReceipt }) {
   );
 }
 
-export function BreachReplay({ modes, receipts }: { modes: ModeExposure[]; receipts: { label: string; r: ChatReceipt }[] }) {
+export function BreachReplay({
+  modes,
+  receipts,
+  account,
+  cosign,
+  cosignError,
+  onConnect,
+  onCosign,
+  onDownload,
+}: {
+  modes: ModeExposure[];
+  receipts: { label: string; r: ChatReceipt }[];
+  account: string | null;
+  cosign?: CoSigned;
+  cosignError?: string;
+  onConnect: () => void;
+  onCosign: () => void;
+  onDownload: () => void;
+}) {
   const [tab, setTab] = useState(receipts.length - 1);
   const cur = receipts[Math.min(tab, receipts.length - 1)];
   return (
@@ -237,6 +256,41 @@ export function BreachReplay({ modes, receipts }: { modes: ModeExposure[]; recei
         </div>
         <pre>{cur.r.request_body}</pre>
         <HashCheck r={cur.r} />
+        <div className="cosign">
+          {!account ? (
+            <div className="row">
+              <span>Want a receipt signed by both the enclave and you?</span>
+              <button className="btn ghost" onClick={onConnect}>
+                Connect NEAR wallet
+              </button>
+            </div>
+          ) : !cosign ? (
+            <div className="row">
+              <span>Co-sign this exposure receipt (hashes only, no content) as <b>{account}</b>.</span>
+              <button className="btn" onClick={onCosign}>
+                Co-sign with NEAR
+              </button>
+            </div>
+          ) : (
+            <>
+              <span>
+                {cosign.signatureValid ? "✓" : "✗"} Co-signed by <b>{cosign.sig.accountId}</b>: NEP-413 ed25519 signature{" "}
+                {cosign.signatureValid ? "verified in your browser" : "did NOT verify"}
+              </span>
+              <span>
+                {cosign.keyOnChain ? "✓" : "?"} Signing key{" "}
+                {cosign.keyOnChain ? `is a ${cosign.keyOnChain === "FullAccess" ? "full-access" : "function-call"} key of ${cosign.sig.accountId} on-chain` : "could not be confirmed on-chain (RPC unavailable or key not found)"}
+              </span>
+              <div className="row">
+                <button className="btn" onClick={onDownload}>
+                  Download receipt (.json)
+                </button>
+                <span className="muted">enclave signature + your signature, verifiable offline</span>
+              </div>
+            </>
+          )}
+          {cosignError && <span>✗ {cosignError}</span>}
+        </div>
       </div>
     </div>
   );

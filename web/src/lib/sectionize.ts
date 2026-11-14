@@ -1,8 +1,8 @@
 /**
  * Split a document into a section tree — locally, with NO model call.
- * (The old privateRAG built its TOC by sending the whole document to an LLM;
- * that would make "need-to-know" meaningless, so structure is derived from
- * the text itself: markdown headings, numbered headings, ALL-CAPS lines.)
+ * (Asking an LLM for the structure would mean sending it the whole document,
+ * so structure is derived from the text itself: markdown headings, numbered
+ * headings, ALL-CAPS lines.)
  */
 
 export interface Section {

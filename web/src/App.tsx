@@ -243,7 +243,7 @@ export default function App() {
     }
   }
 
-  // ─────────── private RAG vault (wallet-encrypted, this browser only) ───────────
+  // ─────────── private vault (wallet-encrypted, this browser only) ───────────
   const [vaultKey, setVaultKey] = useState<CryptoKey | null>(null); // memory only, never persisted
   const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
   const [activeVaultId, setActiveVaultId] = useState<string | null>(null);

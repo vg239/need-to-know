@@ -2,9 +2,8 @@
  * PDF → structured text, entirely in the browser (pdf.js, no network).
  *
  * This is a LOCAL PageIndex: a hierarchical table of contents with page
- * numbers, built WITHOUT a model. PrivateRAG built its PageIndex tree by
- * sending the full document text to an LLM; that would defeat need-to-know,
- * so the tree comes from the PDF itself:
+ * numbers, built WITHOUT a model. Sending the full text to an LLM to build
+ * the tree would defeat need-to-know, so the tree comes from the PDF itself:
  *
  *   1. the PDF outline (bookmarks), when present: the author's own TOC
  *   2. otherwise typography: lines larger than body text, or bold at body

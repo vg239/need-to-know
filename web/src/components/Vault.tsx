@@ -5,7 +5,7 @@ export interface VaultItem {
   doc: VaultDoc;
 }
 
-/** The private RAG library: encrypted with a key from your NEAR wallet, stored in this browser only. */
+/** The private document library: encrypted with a key from your NEAR wallet, stored in this browser only. */
 export function VaultPanel(props: {
   account: string | null;
   unlocked: boolean;

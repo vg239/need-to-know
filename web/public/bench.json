@@ -1,0 +1,61 @@
+{
+ "model": "z-ai/glm-5.3-flash",
+ "generated": "2026-11-14T10:19:41.025Z",
+ "questions": 20,
+ "rows": [
+  {
+   "mode": "full",
+   "label": "Whole document (raw)",
+   "exposure_pct": 100,
+   "correct": 20,
+   "total": 20,
+   "identifiers": 21.5,
+   "all_signatures_verified": true
+  },
+  {
+   "mode": "rag",
+   "label": "Typical RAG (raw chunks)",
+   "exposure_pct": 69.32625927649497,
+   "correct": 20,
+   "total": 20,
+   "identifiers": 15.3,
+   "all_signatures_verified": true
+  },
+  {
+   "mode": "ntk-bm25-5",
+   "label": "Need-to-Know · local · 5% budget",
+   "exposure_pct": 4.98227534979871,
+   "correct": 18,
+   "total": 20,
+   "identifiers": 0,
+   "all_signatures_verified": true
+  },
+  {
+   "mode": "ntk-bm25-10",
+   "label": "Need-to-Know · local · 10% budget",
+   "exposure_pct": 8.04252394023312,
+   "correct": 20,
+   "total": 20,
+   "identifiers": 0,
+   "all_signatures_verified": true
+  },
+  {
+   "mode": "ntk-bm25-20",
+   "label": "Need-to-Know · local · 20% budget",
+   "exposure_pct": 15.915649918579003,
+   "correct": 20,
+   "total": 20,
+   "identifiers": 0,
+   "all_signatures_verified": true
+  },
+  {
+   "mode": "ntk-skel",
+   "label": "Need-to-Know · skeleton · 12% budget",
+   "exposure_pct": 14.39691365859849,
+   "correct": 17,
+   "total": 20,
+   "identifiers": 0,
+   "all_signatures_verified": true
+  }
+ ]
+}

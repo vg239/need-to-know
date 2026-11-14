@@ -1,6 +1,6 @@
 {
  "model": "z-ai/glm-5.3-flash",
- "generated": "2026-11-14T10:19:41.025Z",
+ "generated": "2026-11-14T12:50:18.396Z",
  "questions": 20,
  "rows": [
   {
@@ -51,8 +51,8 @@
   {
    "mode": "ntk-skel",
    "label": "Need-to-Know · skeleton · 12% budget",
-   "exposure_pct": 14.39691365859849,
-   "correct": 17,
+   "exposure_pct": 14.27265965252368,
+   "correct": 18,
    "total": 20,
    "identifiers": 0,
    "all_signatures_verified": true

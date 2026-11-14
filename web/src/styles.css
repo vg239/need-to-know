@@ -317,6 +317,17 @@ li.bad { text-decoration: line-through; }
 .bench th, .bench td { text-align: left; padding: 8px 6px; border-bottom: 1.5px solid var(--ink-16); }
 .bench th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-60); font-weight: 600; }
 
+/* wallet */
+.wallet-wrap { position: relative; display: inline-flex; }
+.wallet-menu { position: fixed; top: 74px; z-index: 30; display: grid; gap: 6px; padding: 12px 14px; min-width: 220px; font-size: 13px; }
+.wallet-menu .btn { padding: 7px 12px; font-size: 13px; justify-content: center; }
+.cosign { margin-top: 12px; padding-top: 12px; border-top: 1.5px dashed var(--paper-32); display: grid; gap: 6px; font-size: 12.5px; }
+.cosign .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cosign .btn { background: var(--paper); color: var(--ink); border-color: var(--paper); padding: 7px 12px; font-size: 13px; }
+.cosign .btn.ghost { background: transparent; color: var(--paper); border-color: var(--paper-32); }
+/* the wallet-selector modal sits above everything */
+.nws-modal-wrapper { z-index: 100 !important; }
+
 /* key dialog */
 .key-backdrop { position: fixed; inset: 0; z-index: 50; background: rgb(30 43 77 / 0.35); display: grid; place-items: center; padding: 16px; }
 .key-card { width: min(520px, 100%); padding: 24px; }

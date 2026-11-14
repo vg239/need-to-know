@@ -11,6 +11,13 @@
     "bench": "tsx bench/run_bench.ts"
   },
   "dependencies": {
+    "@near-wallet-selector/core": "^10.1.4",
+    "@near-wallet-selector/meteor-wallet": "^10.1.4",
+    "@near-wallet-selector/modal-ui": "^10.1.4",
+    "@near-wallet-selector/my-near-wallet": "^10.1.4",
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1",
+    "buffer": "^6.0.3",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

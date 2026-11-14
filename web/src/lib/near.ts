@@ -1,8 +1,7 @@
 /**
  * NEAR wallet: connect, NEP-413 message signing, and LOCAL verification.
  *
- * Adapted from PrivateRAG's wallet module (wallet-selector + signMessage),
- * with two additions:
+ * Two guarantees on top of wallet-selector's signMessage:
  *   - every signature is verified in the browser (ed25519 over the NEP-413
  *     payload hash), never trusted blindly;
  *   - the signing key is checked on-chain (view_access_key over NEAR RPC),

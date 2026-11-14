@@ -135,9 +135,7 @@ Steps 8 to 13 were run with a real mainnet account through the real Meteor web w
 
 ## Disclosures
 
-- New work written during the hackathon. Adapted from the author's earlier **PrivateRAG**: the wallet-selector pattern and the "key from a wallet signature" vault idea. Changed here: local NEP-413 verification, on-chain key check, HKDF, browser-only vault, and a local PageIndex instead of an LLM-built one.
-- Written with an AI coding assistant (Claude Code), directed, reviewed and tested by the author. `web/` started from the Vite `react-ts` template. Verification follows NEAR's docs and [nearai-cloud-verifier](https://github.com/nearai/nearai-cloud-verifier).
-- Libraries: FastAPI, Uvicorn, Requests, `dcap-qvl`, `eth-account`; React, Vite, pdf.js, `@near-wallet-selector` (core, modal-ui, meteor-wallet, near-mobile-wallet), `@noble/curves`, `@noble/hashes`. No other chains.
+Coding was done using [Claude Code](https://claude.com/claude-code).
 
 ## License and data
 

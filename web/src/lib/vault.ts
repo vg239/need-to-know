@@ -1,10 +1,8 @@
 /**
- * Private RAG vault: an encrypted document library that lives ONLY in this
+ * Private vault: an encrypted document library that lives ONLY in this
  * browser (IndexedDB), unlocked by a NEAR wallet signature.
  *
- * Adapted from PrivateRAG, which encrypted its TOC with a key derived from a
- * wallet signature but stored the ciphertext in a server database. Here
- * nothing is stored server-side (a track requirement), so the vault stays in
+ * Nothing is stored server-side (a track requirement), so the vault stays in
  * the browser:
  *
  *   key  = HKDF-SHA256(NEP-413 signature over a fixed message + deterministic

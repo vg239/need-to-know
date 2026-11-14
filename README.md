@@ -6,7 +6,7 @@
 
 Need-to-Know is a private document Q&A app built on **NEAR AI Cloud**. Inference runs inside Intel TDX + NVIDIA confidential-computing enclaves, and every question starts with a fresh-nonce attestation, so nothing is sent until the enclave is verified. Documents are indexed, minimised and pseudonymised in your browser: the model receives only the few sections a question needs, with names and IDs replaced by codes, and the answer is restored locally. The enclave signs the exact bytes it received, so you can see and prove what left your machine. A NEAR wallet co-signs these exposure receipts and unlocks an encrypted vault for your documents that never leaves your browser.
 
-**Why it matters:** on 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator and host, but not from a bug in the software running inside it, and AI tools usually send far more of a document than a question needs. Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**: about 8% of the document and zero real identifiers, with the same accuracy as sending everything.
+**Why it matters:** on 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator and host, but not from a bug in the software running inside it, and AI tools usually send far more of a document than a question needs. Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**: in our benchmark, about 8% of the document and zero real identifiers (counted in the exact bytes sent, for every identifier the browser detects), with the same accuracy as sending everything.
 
 ---
 
@@ -51,13 +51,52 @@ sequenceDiagram
 | Exact bytes | `server/app.py` | The request is serialised once; the enclave signs `sha256(request)` and `sha256(response)`; the browser re-hashes and matches. |
 | Wallet + vault | `near.ts`, `vault.ts`, `receipt.ts` | NEP-413 signatures verified locally and on-chain. One signature derives an AES-256-GCM key for a vault stored only in this browser. Receipts hold hashes only. |
 
-**Benchmark** (20 questions, live TEE model, `npm run bench`):
+## What is verified
+
+Before anything about the document is sent, for the gateway and each GPU enclave:
+
+- the Intel TDX quote is verified against Intel's collateral (`dcap-qvl`)
+- our fresh nonce is bound inside the quote (`report_data[32:64]`), next to the enclave's signing address (`report_data[0:32]`)
+- `MRCONFIGID` equals the hash of the exact docker compose the enclave runs
+- `RTMR3` matches a replay of the enclave's event log
+- NVIDIA's attestation service (NRAS) approves the GPU evidence, which carries our nonce
+
+After the answer:
+
+- the enclave's `provider_tee` signature covers `sha256(exact request)` and `sha256(exact response)`
+- the signature recovers (EIP-191) to an enclave that was verified *before* the call
+- the browser re-hashes the request bytes it shows you and finds that hash in the signed text
+
+Only NEAR-hosted TEE models (`owned_by: "nearai"`) are offered. The app uses `z-ai/glm-5.3-flash`.
+
+## What the server keeps: nothing
+
+`server/app.py` is a stateless proxy, and a banner at the top of the file says so.
+
+- No database, no files written, no caches. The server code has no `open(` or `write` calls.
+- The uvicorn access log is off; request and response bodies are never logged.
+- The NEAR AI key is either yours (sent per request in a header, then dropped) or the server's from `.env`.
+- The name map, the vault and the vault key exist only in your browser.
+
+A server is needed only because Intel and NVIDIA quote verification uses native libraries. Every check result and the exact request bytes come back to the browser, which re-hashes them itself.
+
+## Built on NEAR
+
+- **NEAR AI Cloud inference:** the OpenAI-compatible `/v1/chat/completions` API on a TEE model
+- **NEAR AI attestation:** `/v1/attestation/report` with our nonce, for the gateway and every GPU enclave
+- **NEAR AI response signatures:** `/v1/signature/{id}`, checked against the attested signer
+- **NEAR wallet (NEP-413):** Meteor or NEAR Mobile signs exposure receipts and unlocks the vault; signatures are verified in the browser
+- **NEAR RPC:** `view_access_key` confirms the signing key belongs to the account
+
+## Benchmark
 
 | Mode | Sent | Correct | Real identifiers |
 |---|---|---|---|
 | Whole document | 100% | 20/20 | 21.5 |
 | Typical RAG | 69.3% | 20/20 | 15.3 |
 | **Need-to-Know** | **8.0%** | **20/20** | **0** |
+
+20 questions over the three fictional sample documents, run through the same code as the app (`web/bench/run_bench.ts`, `npm run bench`) against the live TEE model. An answer counts as correct if it contains the expected keyword, and every response was signature-verified against an attested enclave. *Typical RAG* means raw ~250-token chunks, top 4 by BM25, no redaction. Identifiers are counted in the exact request bytes, for every identifier the browser detects.
 
 ---
 

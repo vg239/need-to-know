@@ -92,7 +92,8 @@ def replay_rtmr3(event_log) -> str:
 
 def list_tee_models(api_key: str) -> list[dict]:
     """Models hosted by NEAR AI inside TEEs (owned_by == 'nearai'), chat-capable only."""
-    data = requests.get(f"{BASE}/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=30).json()["data"]
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}  # /models is public
+    data = requests.get(f"{BASE}/models", headers=headers, timeout=30).json()["data"]
     skip = ("embedding", "reranker", "whisper", "flux", "privacy-filter")
     return [m for m in data if m.get("owned_by") == "nearai" and not any(s in m["id"].lower() for s in skip)]
 

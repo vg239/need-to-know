@@ -4,139 +4,96 @@
 
 > The TEE proves *where* your document was processed. Need-to-Know proves *how little* of it was sent.
 
-NEAR Hackathon, **Privacy & Private AI** track. Inference runs on **NEAR AI Cloud** in Intel TDX + NVIDIA confidential-computing enclaves, verified with a fresh nonce before every question. Documents are indexed, minimised and pseudonymised in the browser. A NEAR wallet co-signs receipts and unlocks an encrypted vault that never leaves your machine.
+| | |
+|---|---|
+| **Hackathon** | NEAR Hackathon 2026, **Privacy & Private AI** track |
+| **Demo video** | *(add link)* |
+| **Built on** | NEAR AI Cloud (TEE inference + attestation), NEAR wallet (NEP-413), NEAR RPC |
 
-**Why it matters:** on 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator, not from a bug inside it. Need-to-Know assumes the enclave can be breached and keeps what is there to steal small, coded and provable.
+## The problem
+
+On 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator, not from a bug inside it, and AI tools still send far more of a document than a question needs.
+
+## The solution
+
+Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**. Your browser picks only the sections a question needs, replaces names and IDs with codes, and sends that sliver to a NEAR AI TEE that is attested with a fresh nonce first. The enclave signs the exact bytes it received, so you can see and prove what left: about **9% of the document and 0 real identifiers**, with the same accuracy as sending everything.
+
+## Track requirements
+
+| Requirement | Where |
+|---|---|
+| NEAR AI Cloud, OpenAI-compatible API, key in `.env` | `server/app.py` (users can also bring their own key) |
+| TEE model | `z-ai/glm-5.3-flash`; only `owned_by: "nearai"` models are offered |
+| Attestation with a fresh nonce, shown in the UI | `server/verify.py`: 35 checks (Intel TDX, NVIDIA, nonce, signer, compose hash, RTMR3, response signature), shown in the **Verified** panel |
+| Nothing kept server-side | `server/app.py` is a stateless proxy: no database, no files, no logs |
+| Sample data | Three fictional documents in `web/public/samples/` |
+| Minimal script | `poc/verify_once.py`: one attested, verified completion |
 
 ---
 
 ## User flow
 
-1. **Open the app.** Optionally tick **Use my own NEAR AI key** (stored only in your browser).
-2. **Pick a document:** a fictional sample, or your own PDF / Markdown / text. It is indexed locally ("Local index: N sections, 0 bytes sent").
-3. **Optional: Connect NEAR** (Meteor or NEAR Mobile) and **Unlock vault** with one signature. Save the document to your encrypted vault.
-4. **Ask.** The app attests the enclave, picks the few relevant sections, swaps identifiers for codes (`Maria Lopez` becomes `PERSON_1`), sends that sliver and restores names in the answer.
-5. **Check the evidence:** redaction map of what the enclave saw, **Exposure Meter** (vs. whole document and typical RAG), **Verified** panel (35 checks).
-6. **Breach Replay:** the attacker's copy, as exact request bytes. Your browser re-hashes them and finds the hash inside the enclave's signature.
-7. **Co-sign** the receipt with your wallet and download it (hashes only).
-8. **Come back later:** unlock the vault, reopen the document and its earlier Q&A.
-
----
+1. **Pick a document:** a fictional sample, or your own PDF / Markdown / text. It is indexed in the browser; nothing is uploaded.
+2. **Optional:** connect a NEAR wallet (Meteor or NEAR Mobile) and unlock your encrypted vault with one signature.
+3. **Ask.** The enclave is verified first, then only the relevant, coded sections are sent. Names come back restored.
+4. **See the proof:** what the enclave saw, the Exposure Meter, 35/35 checks, and **Breach Replay** with the exact bytes and their hash inside the enclave's signature.
+5. **Optional:** co-sign the receipt with your wallet. Come back later and your documents and Q&A are still in your vault.
 
 ## Architecture
 
 ![Need-to-Know architecture](docs/architecture.svg)
 
-Editable source: [`docs/architecture.excalidraw`](docs/architecture.excalidraw) (open at [excalidraw.com](https://excalidraw.com)).
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant U as Browser
-    participant P as Stateless proxy
-    participant N as NEAR AI TEE
-    U->>U: local index, detect PII
-    U->>P: /api/attest {fresh nonce}
-    P->>N: attestation report (gateway + GPU enclaves)
-    P-->>U: checks + verified signers (stop if any fail)
-    U->>U: rank sections, apply budget, pseudonymise
-    U->>P: /api/chat {minimal excerpt}
-    P->>N: exact request bytes
-    N-->>P: answer + signature over sha256(req), sha256(resp)
-    P-->>U: answer, exact bytes, signature, checks
-    U->>U: re-hash bytes, restore names
-```
-
----
-
 ## How it works
 
-| Step | Where | What happens |
+| Step | Code | What happens |
 |---|---|---|
-| Local PageIndex | `web/src/lib/pdf.ts`, `sectionize.ts` | pdf.js in the browser. Sections come from the PDF outline, else typography (size, bold, `3.2.1` numbering), else pages. No model, no network. |
-| Pseudonymise | `pii.ts` | Names, IDs, phones, emails, addresses, orgs, accounts become consistent codes. Dates shift by a secret number of months; DOB becomes its decade. The map stays in the browser. |
-| Choose sections | `retrieval.ts` | Local BM25. Vague questions fall back to sending only pseudonymised headings so the model can pick. |
-| Exposure budget | `plan.ts` | Default 10%. Relevant sections that were cut are named, with a one-click **Allow N% and re-ask**. |
-| Attest first | `server/verify.py` | Browser nonce, full TDX + NVIDIA verification. If any check fails, nothing is sent. |
-| Exact bytes | `server/app.py` | The body is serialised once; those bytes are sent, hashed and shown. The enclave signs `model:sha256(req):sha256(resp)`. |
-| Wallet | `near.ts`, `nep413.ts` | Meteor or NEAR Mobile. NEP-413 signatures are verified locally (ed25519), and the key is checked on-chain (`view_access_key`). |
-| Private vault | `vault.ts` | Wallet signature → HKDF → AES-256-GCM key (memory only). Documents and Q&A history encrypted in IndexedDB, in this browser only. |
-| Receipt | `receipt.ts` | Your NEP-413 signature over model, nonce, request/response hashes, exposure % and identifiers sent. No document text. |
-| Own key | `api.ts`, `KeyDialog.tsx` | localStorage, sent per request as `X-NearAI-Key`, used once and dropped. |
+| Index locally | `web/src/lib/pdf.ts`, `sectionize.ts` | Sections from the PDF outline, else typography, else pages. No model, no network. |
+| Pseudonymise | `pii.ts` | Names, IDs, phones, emails, addresses become codes (`Maria Lopez` → `PERSON_1`). Dates shift by a secret offset. The map stays in the browser. |
+| Pick sections | `retrieval.ts`, `plan.ts` | Local BM25 under an exposure budget (default 10%). Cut sections are named, with one-click re-ask. |
+| Verify first | `server/verify.py` | Fresh browser nonce; full Intel TDX + NVIDIA verification. If anything fails, nothing is sent. |
+| Exact bytes | `server/app.py` | The request is serialised once; the enclave signs `sha256(request)` and `sha256(response)`; the browser re-hashes and matches. |
+| Wallet + vault | `near.ts`, `vault.ts`, `receipt.ts` | NEP-413 signatures verified locally and on-chain. One signature derives an AES-256-GCM key for a vault stored only in this browser. Receipts hold hashes only. |
 
-### What is verified
-- **Gateway and each GPU enclave:** Intel TDX quote (`dcap-qvl`), our nonce in `report_data[32:64]`, signer in `report_data[0:32]`, `MRCONFIGID == sha256(app_compose)`, RTMR3 event-log replay, NVIDIA NRAS verdict with our nonce.
-- **Each response:** `provider_tee` signature over `model:sha256(exact request):sha256(exact response)`, EIP-191 recovery, signer must be an enclave verified *before* the call.
-- **Browser:** request hash found in the signed text; wallet signatures and on-chain keys.
-- Only `owned_by: "nearai"` models (hosted in TEEs) are offered. The app uses `z-ai/glm-5.3-flash`.
-
-### What the server keeps: nothing
-`server/app.py` is a stateless proxy (see the banner at the top of the file): no database, no files, no `open(`/`write` calls, uvicorn access log off, bodies never logged. The identity map, vault and vault key exist only in the browser.
-
-### Benchmark
-20 questions, 3 fictional documents, live TEE model (`npm run bench`):
+**Benchmark** (20 questions, live TEE model, `npm run bench`):
 
 | Mode | Sent | Correct | Real identifiers |
 |---|---|---|---|
 | Whole document | 100% | 20/20 | 21.5 |
-| Typical RAG (top 4 chunks) | 69.3% | 20/20 | 15.3 |
-| **Need-to-Know (10% budget)** | **8.0%** | **20/20** | **0** |
+| Typical RAG | 69.3% | 20/20 | 15.3 |
+| **Need-to-Know** | **8.0%** | **20/20** | **0** |
 
 ---
 
-## Quick start
+## Run it
 
 Python 3.12 + [uv](https://docs.astral.sh/uv/), Node 20+, a NEAR AI Cloud key ([cloud.near.ai](https://cloud.near.ai)).
 
 ```bash
-cp .env.example .env                        # API_KEY=... (optional if you paste your own key in the app)
+cp .env.example .env                        # API_KEY=... (or paste your own key in the app)
 cd poc && uv run python verify_once.py      # VERIFIED: YES (35/35 checks)
 cd ../server && uv run python main.py       # proxy on :8000
 cd ../web && npm install && npm run dev     # app on http://localhost:5173
 ```
 
-`npm run build` makes the proxy serve the app on :8000. `VITE_NEAR_NETWORK=testnet` switches the wallet network.
-
----
-
 ## End-to-end test flow
 
-All results below were observed against the live TEE model.
-
-| # | Do | Expect |
-|---|---|---|
-| 1 | `cd poc && uv run python verify_once.py` | `VERIFIED: YES (35/35 checks)` |
-| 2 | Open the app, **Medical record**, click **Your view** | "Local index: 30 sections"; 29 identifiers underlined |
-| 3 | Ask "What was the patient prescribed after surgery, and for how long?" | Ciprofloxacin 500 mg twice daily for 5 days. Meter: ~9% sent, **0 identifiers**. Stamp 35/35 |
-| 4 | **Breach replay**, search the payload for "Maria" | No match, only `PERSON_1`. "these exact bytes are what the attested enclave signed for" |
-| 5 | **Bank statement**, "Audit my spending..." | Heading routing; dashed note offers **Allow N% and re-ask**; re-ask still 0 identifiers |
-| 6 | Upload a real PDF: `curl -L -o attention.pdf https://arxiv.org/pdf/1706.03762v7`, ask "What BLEU score did the big Transformer reach on English-to-German?" | 22 sections from the PDF outline. 28.4, 9.4% sent, 0 of 8 author names |
-| 7 | Tick **Use my own NEAR AI key**, paste a key, ask | Works; `/api/chat` carries `X-NearAI-Key`. An invalid key gives a clear 401 |
-| 8 | **Connect NEAR** → Meteor (extension, or web wallet: *Import an existing wallet* → secret phrase) → Connect | Top bar shows your account |
-| 9 | **Unlock vault (sign once)** → approve "Sign Message" | Vault opens. **Save** the document |
-| 10 | Ask a question | Vault entry shows "1 question" |
-| 11 | Breach replay → **Co-sign with NEAR** → approve | "signature verified in your browser" and "full-access key of you.near on-chain". **Download receipt** |
-| 12 | Reload, unlock again, open the document | Same key re-derived; earlier Q&A restored. IndexedDB holds only ciphertext |
-| 13 | Disconnect | Vault locks |
-| 14 | `touch /tmp/m`, ask 3 questions, `find . -newer /tmp/m -type f -not -path "*/node_modules/*" -not -path "*/.venv/*"` | No new files |
-
-Steps 8 to 13 were run with a real mainnet account through the real Meteor web wallet (no mocks), and the downloaded receipt was verified offline (ed25519 + EIP-191).
-
-**NEAR Mobile:** choose it in the wallet modal and scan the QR code with the app. Its first sign-in adds a login key on-chain, so the account needs a little NEAR for gas. Message signing itself is free.
-
----
+Run `poc/verify_once.py` and it ends with `VERIFIED: YES (35/35 checks)`. Open the app, pick the **Medical record** and click the preset "What was the patient prescribed after surgery, and for how long?": the answer (ciprofloxacin, 5 days) arrives with about 9% of the document sent, 0 real identifiers and 35/35 checks, and **Breach replay** shows the exact request contains `PERSON_1`, never the patient's name, with its hash found inside the enclave's signature. Upload a real PDF such as [arXiv 1706.03762](https://arxiv.org/pdf/1706.03762v7) to see the table of contents built from its outline and an answer that sends none of the authors' names. Then connect Meteor, unlock the vault, save the document, ask, co-sign the receipt, and reload: the same signature reopens the vault with your earlier Q&A. This whole flow was run on mainnet with a real wallet and the live TEE model.
 
 ## Limits
 
 - NEAR AI runs every enclave; splitting across operators is future work.
-- PII detection is rule-based and can miss unusual identifiers. Keyword routing can pick the wrong section; the model is told to say so, and re-ask is offered.
-- Pseudonymisation hides identities, not facts. Minimisation keeps that small.
-- A key in localStorage is readable by scripts on the page; the app loads none from third parties. Use a low-balance key.
+- PII detection is rule-based and can miss unusual identifiers; keyword routing can pick the wrong section (re-ask is offered).
+- Pseudonymisation hides identities, not facts.
 
 ## Disclosures
 
 Coding was done using [Claude Code](https://claude.com/claude-code).
 
-## License and data
+## Contributors
 
-[MIT](LICENSE). Bundled samples in `web/public/samples/` are **fictional**. Public PDFs used in testing are not included.
+- **Vatsal** ([@vg239](https://github.com/vg239)): idea, direction, review and testing
+- **Claude** ([Claude Code](https://claude.com/claude-code) by Anthropic): coding
+
+## License
+
+[MIT](LICENSE). All bundled sample documents are fictional.

@@ -4,6 +4,8 @@
 
 > The TEE proves *where* your document was processed. Need-to-Know proves *how little* of it was sent.
 
+**Demo video:** [watch on X](https://x.com/vg_jojo239/status/2121713826701922330)
+
 Need-to-Know is a private document Q&A app built on **NEAR AI Cloud**. Inference runs inside Intel TDX + NVIDIA confidential-computing enclaves, and every question starts with a fresh-nonce attestation, so nothing is sent until the enclave is verified. Documents are indexed, minimised and pseudonymised in your browser: the model receives only the few sections a question needs, with names and IDs replaced by codes, and the answer is restored locally. The enclave signs the exact bytes it received, so you can see and prove what left your machine. A NEAR wallet co-signs these exposure receipts and unlocks an encrypted vault for your documents that never leaves your browser.
 
 **Why it matters:** on 9 November 2026 NEAR AI paused inference after an RCE in SGLang, the engine running *inside* its enclaves ([report](https://cryptobriefing.com/near-ai-pauses-cloud-inference-unauthorized-access/)). A TEE protects data from the operator and host, but not from a bug in the software running inside it, and AI tools usually send far more of a document than a question needs. Need-to-Know assumes the enclave can be breached and keeps what is there to steal **small, coded and provable**: in our benchmark, about 8% of the document and zero real identifiers (counted in the exact bytes sent, for every identifier the browser detects), with the same accuracy as sending everything.
@@ -102,14 +104,21 @@ A server is needed only because Intel and NVIDIA quote verification uses native 
 
 ## Run it
 
-Python 3.12 + [uv](https://docs.astral.sh/uv/), Node 20+, a NEAR AI Cloud key ([cloud.near.ai](https://cloud.near.ai)).
+Python 3.12 + [uv](https://docs.astral.sh/uv/), Node 20+, and a NEAR AI Cloud key from [cloud.near.ai](https://cloud.near.ai) ($10 of free credit via [NEAR Builders](https://nearbuilders.org/dashboard)).
 
 ```bash
-cp .env.example .env                        # API_KEY=... (or paste your own key in the app)
+cp .env.example .env                        # replace the placeholder with API_KEY=<your key>
 cd poc && uv run python verify_once.py      # VERIFIED: YES (35/35 checks)
-cd ../server && uv run python main.py       # proxy on :8000
-cd ../web && npm install && npm run dev     # app on http://localhost:5173
+cd ../server && uv run python main.py       # proxy on :8000 (keeps running)
 ```
+
+In a second terminal:
+
+```bash
+cd web && npm install && npm run dev        # app on http://localhost:5173
+```
+
+No key in `.env`? Tick **Use my own NEAR AI key** in the app instead; it stays in your browser.
 
 ## End-to-end test flow
 
@@ -123,9 +132,9 @@ With the proxy and app running ([Run it](#run-it)):
    Expect the request to contain `PERSON_1`, never the patient's name, and *"these exact bytes are what the attested enclave signed for"*.
 4. **Use a real PDF.** Upload [arXiv 1706.03762](https://arxiv.org/pdf/1706.03762v7) and ask *"What BLEU score did the big Transformer reach on English-to-German?"*.
    Expect the index built from the PDF outline, the answer 28.4, about 9% sent and no author names.
-5. **Wallet and vault.** Connect Meteor, click **Unlock vault**, **Save** the document, ask, then **Co-sign with NEAR**.
+5. **Wallet and vault** (optional, needs a mainnet NEAR wallet). Connect Meteor, click **Unlock vault**, **Save** the document, ask, then **Co-sign with NEAR**.
    Expect the signature verified in the browser, the key confirmed on-chain, and a downloadable receipt.
-6. **Come back.** Reload and unlock again.
+6. **Come back** (optional). Reload and unlock again.
    Expect the same vault with your document and earlier Q&A.
 
 ## Limits
@@ -137,6 +146,10 @@ With the proxy and app running ([Run it](#run-it)):
 ## Disclosures
 
 Coding was done using [Claude Code](https://claude.com/claude-code).
+
+- **Libraries:** FastAPI, Uvicorn, Requests, `dcap-qvl`, `eth-account` (server and script); React, pdf.js, `@near-wallet-selector` (core, modal-ui, meteor-wallet, near-mobile-wallet), `@noble/curves`, `@noble/hashes`, `buffer` (web); `tsx` (benchmark).
+- **Template:** `web/` started from the official Vite `react-ts` template.
+- **Fonts:** Inter and Indie Flower (Google Fonts).
 
 ## License
 
